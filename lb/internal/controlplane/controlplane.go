@@ -37,7 +37,12 @@ func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Handle node registration logic here
+	var node *registry.Node
+	if cp.registry.AddNode(r.Body) == nil {
+		http.Error(w, "Failed to register node", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Node registered successfully"))
 }
@@ -48,7 +53,11 @@ func (cp *ControlPlane) unregisterNodeHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Handle node unregistration logic here
+	if !cp.registry.RemoveNode(r.Body) {
+		http.Error(w, "Failed to unregister node", http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Node unregistered successfully"))
 }
@@ -59,9 +68,10 @@ func (cp *ControlPlane) listNodesHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Handle listing nodes logic here
+	nodes := cp.registry.ListNodes()
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("List of nodes"))
+	w.Write([]byte(fmt.Sprintf("List of nodes: %v", nodes)))
 }
 
 // address := fmt.Sprintf("%s:9000", address)

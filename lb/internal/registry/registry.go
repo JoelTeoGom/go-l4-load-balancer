@@ -2,10 +2,11 @@ package registry
 
 import (
 	"math/rand/v2"
-	"net"
+	"sync"
 )
 
 type Registry struct {
+	mu    sync.Mutex
 	nodes []*Node
 }
 
@@ -15,31 +16,16 @@ func NewRegistry() *Registry {
 	}
 }
 
-type Node struct {
-	id   int
-	conn net.Conn
-}
-
-func (n *Node) ID() int {
-	return n.id
-}
-
-func (n *Node) Conn() net.Conn {
-	return n.conn
-}
-
-func NewNode(id int, conn net.Conn) *Node {
-	return &Node{
-		id:   id,
-		conn: conn,
-	}
-}
-
-func (r *Registry) AddNode(node *Node) {
+func (r *Registry) AddNode(node *Node) *Node {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.nodes = append(r.nodes, node)
+	return node
 }
 
 func (r *Registry) RemoveNode(node *Node) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	for i, n := range r.nodes {
 		if n == node {
 			r.nodes = append(r.nodes[:i], r.nodes[i+1:]...)
@@ -49,11 +35,15 @@ func (r *Registry) RemoveNode(node *Node) {
 }
 
 func (r *Registry) ListNodes() []*Node {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.nodes
 }
 
 // Test function to obtain a random node from the registry
 func (r *Registry) ObtainRandomNode() *Node {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if len(r.nodes) == 0 {
 		return nil
 	}
