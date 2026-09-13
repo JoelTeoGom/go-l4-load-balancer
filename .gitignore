@@ -1,0 +1,20 @@
+# Local environment (real addresses, never commit)
+.env
+.env.*
+!.env.example
+
+# Go build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/bin/
+/dist/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
