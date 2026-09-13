@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/config"
-	controlplane "github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/controlPlane"
+	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/controlplane"
 	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/dataplane"
 	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
 )
