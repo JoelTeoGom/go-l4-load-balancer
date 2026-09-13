@@ -25,9 +25,11 @@ func (cp *ControlPlane) StartControlPlane(ctx context.Context, address string) e
 	http.HandleFunc("/health", cp.healthHandler)
 
 	address = fmt.Sprintf("%s:9000", address)
+	fmt.Println("Listening Control Plane: ", address)
 	err := http.ListenAndServe(address, nil)
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
+	return nil
 }

@@ -1,14 +1,14 @@
 package registry
 
 type Node struct {
-	id      int
+	id      string
 	address string
 
 	status     Status
 	cpuPercent int
 }
 
-func NewNode(id int, address string, status Status, cpuPercent int) *Node {
+func NewNode(id string, address string, status Status, cpuPercent int) *Node {
 	return &Node{
 		id:         id,
 		address:    address,
@@ -17,7 +17,7 @@ func NewNode(id int, address string, status Status, cpuPercent int) *Node {
 	}
 }
 
-func (n *Node) ID() int {
+func (n *Node) ID() string {
 	return n.id
 }
 

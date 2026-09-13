@@ -1,8 +1,12 @@
 package controlplane
 
 import (
+	"context"
+	"fmt"
 	"net"
 	"net/http"
+
+	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
 )
 
 func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -13,17 +17,17 @@ func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Reque
 
 	defer r.Body.Close() // Close the request body to avoid resource leaks
 
-	host, port, err := net.SplitHostPort(r.RemoteAddr)
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "Invalid remote address", http.StatusBadRequest)
 		return
 	}
-	// var node *registry.Node
-	// node = registry.AddNode() // Create a new node with a unique ID and nil connection
-	// if cp.registry.AddNode(node) == nil {
-	// 	http.Error(w, "Failed to register node", http.StatusInternalServerError)
-	// 	return
-	// }
+	nodeID := fmt.Sprintf("Node-A")
+	node := registry.NewNode(nodeID, host, registry.StatusActive, 0)
+	if cp.registry.AddNode(node) == nil {
+		http.Error(w, "Failed to register node", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Node registered successfully"))
@@ -50,8 +54,8 @@ func (cp *ControlPlane) listNodesHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	//nodes := cp.registry.ListNodes()
-
+	nodes := cp.registry.ListNodes()
+	fmt.Println("Log List: ", nodes)
 	w.WriteHeader(http.StatusOK)
 	//w.Write([]byte(fmt.Sprintf("List of nodes: %v", nodes)))
 }
@@ -72,8 +76,8 @@ func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Node not found", http.StatusNotFound)
 		return
 	}
-
-	cp.registry.EmitEvent(node)
+	ctx := context.Background()
+	cp.registry.EmitEvent(ctx, node, "CREATED")
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Control plane is healthy"))

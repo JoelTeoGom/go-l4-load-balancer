@@ -17,6 +17,13 @@ type NodeEvent struct {
 	Event string
 }
 
+func NewRegistry() *Registry {
+	return &Registry{
+		nodes:  []*Node{},
+		events: make(chan NodeEvent, 10),
+	}
+}
+
 func (r *Registry) GetNoteByAddress(address string) *Node {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -38,13 +45,6 @@ func (r *Registry) EmitEvent(ctx context.Context, node *Node, event string) {
 	}:
 	default:
 		// to avoid blocking if the channel is full, we will get another one after a while
-	}
-}
-
-func NewRegistry() *Registry {
-	return &Registry{
-		nodes:  []*Node{},
-		events: make(chan NodeEvent, 10),
 	}
 }
 

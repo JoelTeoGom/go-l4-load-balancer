@@ -20,6 +20,7 @@ func NewDataPlane(registry *registry.Registry) *DataPlane {
 
 func (dp *DataPlane) StartDataplane(ctx context.Context, address string) error {
 	address = fmt.Sprintf("%s:8080", address)
+	fmt.Println("Listening Data plane: ", address)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		fmt.Println(err)
@@ -44,15 +45,28 @@ func (dp *DataPlane) handleConnection(ctx context.Context, conn net.Conn) {
 		return
 	}
 
+	newConn, err := net.Dial("tcp", node.Address())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer newConn.Close()
+
 	for {
-		buffer := make([]byte, 1024)
-		n, err := conn.Read(buffer)
+		// go func() {
+		// 	responseBuffer := make([]byte, 1024)
+		// 	num, err := newConn.Read(responseBuffer)
+
+		// }()
+
+		readBuffer := make([]byte, 1024)
+		n, err := conn.Read(readBuffer)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		_, err = node.Conn().Write(buffer[:n])
+		_, err = newConn.Write(readBuffer[:n])
 		if err != nil {
 			fmt.Println(err)
 			return
