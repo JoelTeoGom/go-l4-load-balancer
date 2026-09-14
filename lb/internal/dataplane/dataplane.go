@@ -39,19 +39,22 @@ func (dp *DataPlane) StartDataplane(ctx context.Context, address string) error {
 }
 
 func (dp *DataPlane) handleConnection(ctx context.Context, conn net.Conn) {
+	defer conn.Close()
 	node := dp.registry.ObtainRandomNode()
 	if node == nil {
 		fmt.Println("No available nodes")
 		return
 	}
-
-	newConn, err := net.Dial("tcp", node.Address())
+	address := fmt.Sprintf("%s:8080", node.Address())
+	newConn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer newConn.Close()
 
+	readBuffer := make([]byte, 1024)
+	//	writeBuffer := make([]byte, 1024)
 	for {
 		// go func() {
 		// 	responseBuffer := make([]byte, 1024)
@@ -59,7 +62,6 @@ func (dp *DataPlane) handleConnection(ctx context.Context, conn net.Conn) {
 
 		// }()
 
-		readBuffer := make([]byte, 1024)
 		n, err := conn.Read(readBuffer)
 		if err != nil {
 			fmt.Println(err)

@@ -1,9 +1,8 @@
 package registry
 
 type Node struct {
-	id      string
-	address string
-
+	id         string
+	address    string
 	status     Status
 	cpuPercent int
 }
