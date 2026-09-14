@@ -1,7 +1,43 @@
 package main
 
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"net/http/httptrace"
+	"time"
+
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/config"
+)
+
 func main() {
 
+	cfg := config.NewConfig()
+	client := http.Client{}
+	address := fmt.Sprintf("http://%s:9000/register-node", cfg.Address())
+	req, err := http.NewRequest("POST", address, nil)
+	if err != nil {
+		log.Fatalf("Request creation failed: %v", err)
+	}
+
+	fmt.Println(address)
+	start := time.Now()
+	trace := &httptrace.ClientTrace{
+		DNSDone: func(info httptrace.DNSDoneInfo) {
+			log.Printf("DNS took: %v", time.Since(start))
+		},
+		GotConn: func(info httptrace.GotConnInfo) {
+			log.Printf("Connection took: %v, Reused: %v", time.Since(start), info.Reused)
+		},
+	}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	log.Printf("Status: %s, Total time: %v", resp.Status, time.Since(start))
 }
 
 // func createContainerNetworkRules() error {
