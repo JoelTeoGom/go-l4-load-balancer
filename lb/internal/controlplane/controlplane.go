@@ -24,6 +24,9 @@ func (cp *ControlPlane) StartControlPlane(ctx context.Context, address string) e
 	http.HandleFunc("/list-nodes", cp.listNodesHandler)
 	http.HandleFunc("/health", cp.healthHandler)
 
+	http.HandleFunc("/create-service", cp.CreateService)
+	http.HandleFunc("/create-pod", cp.CreatePod)
+
 	address = fmt.Sprintf("%s:9000", address)
 	fmt.Println("Listening Control Plane: ", address)
 	err := http.ListenAndServe(address, nil)
