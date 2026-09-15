@@ -1,48 +1,88 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/http"
-	"net/http/httptrace"
-	"time"
+	"net"
+	"os/exec"
+	"strings"
 
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/config"
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/registry"
 )
 
 func main() {
+	ctx := context.Background()
 
 	cfg := config.NewConfig()
-	client := http.Client{}
-	address := fmt.Sprintf("http://%s:9000/register-node", cfg.Address())
-	req, err := http.NewRequest("POST", address, nil)
+	hostName, err := initSetup(cfg.LbAddress(), cfg.SvcPort())
 	if err != nil {
-		log.Fatalf("Request creation failed: %v", err)
+		panic(err)
 	}
 
-	fmt.Println(address)
-	start := time.Now()
-	trace := &httptrace.ClientTrace{
-		DNSDone: func(info httptrace.DNSDoneInfo) {
-			log.Printf("DNS took: %v", time.Since(start))
-		},
-		GotConn: func(info httptrace.GotConnInfo) {
-			log.Printf("Connection took: %v, Reused: %v", time.Since(start), info.Reused)
-		},
-	}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-
-	resp, err := client.Do(req)
+	registry := registry.NewRegistry(cfg.LbAddress(), hostName)
+	err = registry.ConnectToCtrlPlane(ctx, cfg.LbAddress(), hostName)
 	if err != nil {
-		log.Fatalf("Request failed: %v", err)
+		panic(err)
 	}
-	defer resp.Body.Close()
-	log.Printf("Status: %s, Total time: %v", resp.Status, time.Since(start))
+
 }
 
-// func createContainerNetworkRules() error {
+func initSetup(target, servicePort string) (string, error) {
+	//0. Setting up TCP forwarding to 1
+	cmd := exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("sysctl: %w: %s", err, out)
+	}
 
-// }
+	//1. Setting up PREROUTING jump TO KUBE-SERVICES
+	rule := "-t nat -A PREROUTING -j KUBE-SERVICES"
+	args := strings.Fields(rule) // ["-t","nat","-A","PREROUTING","-j","KUBE-SERVICES"]
+	cmd = exec.Command("iptables", args...)
+	cmd.CombinedOutput()
+
+	//2.Setting up
+	localIP, err := outboundIP(target)
+	if err != nil {
+		fmt.Println("Lb not up!!!")
+		panic(err)
+	}
+
+	rule = fmt.Sprintf("-A KUBE-SERVICES -d %s -p tcp --dport %s -j KUBE-SVC", localIP, servicePort)
+	args = strings.Fields(rule)
+	cmd = exec.Command("iptables", args...)
+	cmd.CombinedOutput()
+
+	//3. hostName
+	hostName, err := exec.Command("hostname").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(hostName), nil
+}
+
+// quick udp connection to obtain local address quick
+func outboundIP(target string) (net.IP, error) {
+	conn, err := net.Dial("udp", target)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).IP, nil
+}
+
+//1. Node up -> service systemmd   ---->>>>>> up agent
+//1.1 Settup Node SERVICE_AND_NETWORK RULES
+//2. Agent ->   ctrlplane_url/node/register
+//3. Metrics ----> 5 / 10 secs  ctrlplane_url/node/health
+//4. Event   ----> worker escuchando SSE en un channel i ejecuta ordenes create_pod, remove_pod ... ping health
+
+//if pod_create --->>
+
+//apaga   ---> ctrlplane_url/node/unregister
 
 // Cómo lo tiene kube-proxy
 

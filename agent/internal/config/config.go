@@ -3,15 +3,21 @@ package config
 import "os"
 
 type Config struct {
-	address string
+	lbAddr      string
+	servicePort string
 }
 
 func NewConfig() *Config {
 	return &Config{
-		address: os.Getenv("LB_ADDRESS"),
+		lbAddr:      os.Getenv("LB_ADDRESS"),
+		servicePort: os.Getenv("SVC_PORT"),
 	}
 }
 
-func (c *Config) Address() string {
-	return c.address
+func (c *Config) LbAddress() string {
+	return c.lbAddr
+}
+
+func (c *Config) SvcPort() string {
+	return c.servicePort
 }
