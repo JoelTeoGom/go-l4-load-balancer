@@ -1,4 +1,4 @@
-package event
+package controlplane
 
 type Event struct {
 	ID      string

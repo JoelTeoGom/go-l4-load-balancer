@@ -9,12 +9,14 @@ import (
 )
 
 type ControlPlane struct {
-	registry *registry.Registry
+	Registry   *registry.Registry
+	EventQueue chan Event
 }
 
 func NewControlPlane(registry *registry.Registry) *ControlPlane {
 	return &ControlPlane{
-		registry: registry,
+		Registry:   registry,
+		EventQueue: make(chan Event, 100),
 	}
 }
 
@@ -24,8 +26,9 @@ func (cp *ControlPlane) StartControlPlane(ctx context.Context, address string) e
 	http.HandleFunc("/list-nodes", cp.listNodesHandler)
 	http.HandleFunc("/health", cp.healthHandler)
 
-	http.HandleFunc("/create-service", cp.CreateService)
-	http.HandleFunc("/create-pod", cp.CreatePod)
+	http.HandleFunc("/create-service", cp.CreateServiceHandler)
+	http.HandleFunc("/create-pod", cp.CreatePodHandler)
+	http.HandleFunc("/watch-node", cp.WatchNodeHandler)
 
 	address = fmt.Sprintf("%s:9000", address)
 	fmt.Println("Listening Control Plane: ", address)

@@ -87,6 +87,23 @@ func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cp *ControlPlane) CreateServiceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	defer r.Body.Close() // Close the request body to avoid resource leaks
+
+	event := Event{
+		ID:      time.Now().String(),
+		action:  ActionCreateService,
+		Payload: "Name",
+	}
+
+	cp.EventQueue
+
+	w.WriteHeader(r.Response.StatusCode)
+	w.Write([]byte("Node unregistered successfully"))
 
 }
 
