@@ -33,8 +33,8 @@ func main() {
 		panic(err)
 	}
 
-	//registry := registry.NewRegistry(cfg.LbAddress(), hostName)
-	// err = registry.ConnectToCtrlPlane(ctx, cfg.LbAddress(), hostName)
+	// controlPlane := controlplane.NewControlPlane(node)
+	// err = controlPlane.RegisterNode(ctx)
 	// if err != nil {
 	// 	panic(err)
 	// }

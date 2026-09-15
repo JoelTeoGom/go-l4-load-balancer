@@ -1,17 +1,10 @@
 package node
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 )
 
 type Node struct {
@@ -49,47 +42,4 @@ func (n *Node) InitSetup() error {
 	cmd.CombinedOutput()
 
 	return nil
-}
-
-func (n *Node) RegisterNode(ctx context.Context, addr, hostname string) error {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 10,
-			IdleConnTimeout:     90 * time.Second,
-		},
-	}
-
-	body, err := json.Marshal(hostname)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-
-	endpoint := fmt.Sprintf("%s/register-node", n.LoadBalancerUrl)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	res, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("do: %w", err)
-	}
-	defer func() {
-		io.Copy(io.Discard, res.Body) // drain so the conn can be reused
-		res.Body.Close()
-	}()
-
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
-		return fmt.Errorf("unexpected status %d: %s", res.StatusCode, b)
-	}
-	return nil
-}
-
-func (n *Node) WatchControlPlane(ctx context.Context, eventJob chan event.Event) {
-
 }
