@@ -2,7 +2,7 @@ package event
 
 type Event struct {
 	ID      string
-	action  Action
+	Action  Action
 	Payload string
 }
 

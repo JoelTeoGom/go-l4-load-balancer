@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
@@ -27,7 +26,7 @@ func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Reque
 	}
 	nodeID := fmt.Sprintf("Node-A")
 	node := registry.NewNode(nodeID, host, registry.StatusActive, 0)
-	if cp.registry.AddNode(node) == nil {
+	if cp.Registry.AddNode(node) == nil {
 		http.Error(w, "Failed to register node", http.StatusInternalServerError)
 		return
 	}
@@ -42,7 +41,7 @@ func (cp *ControlPlane) unregisterNodeHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// if !cp.registry.RemoveNode(r.Body) {
+	// if !cp.Registry.RemoveNode(r.Body) {
 	// 	http.Error(w, "Failed to unregister node", http.StatusInternalServerError)
 	// 	return
 	// }
@@ -57,7 +56,7 @@ func (cp *ControlPlane) listNodesHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	nodes := cp.registry.ListNodes()
+	nodes := cp.Registry.ListNodes()
 	fmt.Println("Log List: ", nodes)
 	w.WriteHeader(http.StatusOK)
 	//w.Write([]byte(fmt.Sprintf("List of nodes: %v", nodes)))
@@ -74,13 +73,13 @@ func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid remote address", http.StatusBadRequest)
 		return
 	}
-	node := cp.registry.GetNoteByAddress(host)
+	node := cp.Registry.GetNoteByAddress(host)
 	if node == nil {
 		http.Error(w, "Node not found", http.StatusNotFound)
 		return
 	}
 	ctx := context.Background()
-	cp.registry.EmitEvent(ctx, node, "CREATED")
+	cp.Registry.EmitEvent(ctx, node, "CREATED")
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Control plane is healthy"))
@@ -97,12 +96,22 @@ func (cp *ControlPlane) CreateServiceHandler(w http.ResponseWriter, r *http.Requ
 	event := Event{
 		ID:      time.Now().String(),
 		action:  ActionCreateService,
-		Payload: "Name",
+		Payload: "ServiceName",
 	}
 
-	cp.EventQueue
+	//try to push if we dont have space we discard until next (we also use queue to rate limit)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 
-	w.WriteHeader(r.Response.StatusCode)
+	select {
+	case <-ctx.Done():
+		http.Error(w, "Too many request", http.StatusTooManyRequests)
+		return
+	case cp.EventQueue <- event:
+	}
+
+	//202 becasue async processing
+	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte("Node unregistered successfully"))
 
 }
@@ -112,41 +121,37 @@ func (cp *ControlPlane) CreatePodHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (cp *ControlPlane) WatchNodeHandler(w http.ResponseWriter, r *http.Request) {
-	lastEventID, err := strconv.Atoi(r.Header.Get("Last-Event-ID")) // sent by the browser when it reconnects
 
-	w.Header().Set("Content-Type", "text/event-stream") // the body is a stream of events, not a document
-	w.Header().Set("Cache-Control", "no-cache")         // never store or replay this response
-	// w.Header().Set("Connection", "keep-alive")       // optional no-op: default in HTTP/1.1, dropped in HTTP/2
+	//TODO I WANT TO CREATE A STORE DB TO STORE KEY VALUE EVENTS ORDERED AND USE KEY TO KNOW WHICHS EVENT TO PROCESS
+	//lastEventID, err := strconv.Atoi(r.Header.Get("Last-Event-ID")) // sent by the browser when it reconnects
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
 
-	responseController := http.NewResponseController(w) // gives us Flush without asserting http.Flusher
-	w.WriteHeader(http.StatusOK)                        // headers are ready; the body stays open
-	fmt.Fprint(w, "retry: 3000\n\n")                    // if the connection drops, reconnect after 3s
-	if err := responseController.Flush(); err != nil {  // send the headers now so the client sees the stream open
+	responseController := http.NewResponseController(w)
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "retry: 3000\n\n")
+	if err := responseController.Flush(); err != nil {
 		return
 	}
 
-	events := make(chan Event)
-	go reciteHamlet(r.Context(), startLine, events) // someone else produces events; the handler only writes them
-
-	heartbeatTicker := time.NewTicker(15 * time.Second) // a ping every 15s keeps proxies and NAT from dropping us
+	// a ping every 15s keeps proxies and NAT from dropping us (WE ALSO KNOW IF ITS ALIVE THE NODE)
+	heartbeatTicker := time.NewTicker(15 * time.Second)
 	defer heartbeatTicker.Stop()
 
-	log.Printf("%s connected, Last-Event-ID=%q, starting at line %d", r.RemoteAddr, r.Header.Get("Last-Event-ID"), startLine)
 	defer log.Printf("%s disconnected", r.RemoteAddr)
 
 	for {
 		select {
 		case <-r.Context().Done(): // the client went away
 			return
-
-		case event, stillOpen := <-events:
-			if !stillOpen { // the producer closed the channel: nothing left to recite
+		case event, stillOpen := <-cp.EventQueue:
+			if !stillOpen {
 				fmt.Fprint(w, "event: end\ndata: fin\n\n") // needs a data line, or EventSource drops the event
 				responseController.Flush()
 				return
 			}
 			// id, name and payload, one field per line; the blank line at the end closes the event
-			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.Name, event.Data)
+			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.ID, event.action, event.Payload)
 			if err := responseController.Flush(); err != nil { // push it out of Go's buffer, now
 				return
 			}
