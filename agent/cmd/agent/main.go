@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	//TODO CREATE GRATEFUL SHUTDOWN
 	ctx := context.Background()
 
 	//configs
@@ -40,6 +41,7 @@ func main() {
 	}
 
 	//Create Agent Worker to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
+	go worker.StartWorker(ctx, node, eventJobs)
+	cp.Watch(ctx)
 
-	worker.StartWorker(ctx, node, eventJobs)
 }

@@ -1,5 +1,11 @@
 package node
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 type Pod struct {
 	ID     string
 	NodeID string
@@ -24,10 +30,43 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	// lanzar el proceso con ip netns exec
 	// en el nodo: ip_forward=1 + MASQUERADE (salida) y DNAT (entrada)
 
-	// service, ok := n.services[serviceName]
-	// if !ok {
-	// 	return fmt.Errorf("Service unavailable!")
-	// }
+	service, ok := n.Services[serviceName]
+	if !ok || service == nil {
+		return nil, fmt.Errorf("Service unavailable to create a pod!")
+	}
+
+	podSlice := service.Pods
+	podPrefix := len(service.Pods)
+	id := fmt.Sprintf("%s-SERVICE-%s-POD-%d", n.ID, serviceName, podPrefix)
+
+	ipMASK := strings.Split(n.PodCIDR, "/")
+	if len(ipMASK) < 2 {
+		return nil, fmt.Errorf("No ip format specified")
+	}
+	mask, err := strconv.Atoi(ipMASK[1])
+	if err != nil {
+		return nil, fmt.Errorf("Wrong mask format")
+	}
+
+	//VALID IP range 0 - 255
+	maxRange := 1<<mask - 1    // (1<<8) - 1 = 255
+	hostValue := len(podSlice) //we are going to give ordered IPs
+	if hostValue > maxRange {
+		return nil, fmt.Errorf("Max ips reached")
+	}
+
+	ip := ipMASK[0]
+
+	ipBytes := []byte(ip)
+	ipBytes = ipBytes[:len(ipBytes)-1]
+	podIP := fmt.Sprintf("%s%d", string(ipBytes), hostValue)
+	pod := &Pod{
+		ID:     id,
+		NodeID: n.ID,
+		Port:   service.Port,
+		Status: StatusPending,
+		IP:     podIP,
+	}
 
 	// podSlice := service.Pods
 	// pod :=
@@ -36,6 +75,8 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	// cmd = exec.Command("iptables", args...)
 	// cmd.CombinedOutput()
 
+	//add if everything worked fine
+	service.Pods = append(service.Pods, pod)
 	return nil, nil
 }
 

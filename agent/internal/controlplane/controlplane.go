@@ -100,9 +100,8 @@ func (cp *ControlPlane) Watch(ctx context.Context) error {
 		if len(line) == 0 {
 			continue
 		}
-
 		//Doing this For Fun :)
-		//ex: "id,action,payload+payload+payload"
+		//ex: "id,action,payload"
 		strline := string(line)
 		eventline := strings.Split(strline, ",")
 		if len(eventline) < 3 {
@@ -115,13 +114,12 @@ func (cp *ControlPlane) Watch(ctx context.Context) error {
 		}
 
 		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-
+		//IF WE CANNOT SCHEDULE THE EVENT IN 5 SEC WE DISCARD IT (in the future we could do like kubernetes and have
+		// the events stored in db and reconcile the state using a worker with a ticker)
 		select {
 		case cp.EventQueue <- event:
-		case <-ctx.Done():
 		case <-sendCtx.Done():
 		}
-
 		cancel()
 	}
 	return nil

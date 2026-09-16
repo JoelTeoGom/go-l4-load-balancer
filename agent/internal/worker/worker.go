@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
@@ -18,7 +19,7 @@ func StartWorker(ctx context.Context, node *node.Node, jobQueue <-chan event.Eve
 			}
 			// we dont need to stop the entire agent if some event didnt work
 			//TODO give back some feedback to CtrlPlane
-			err := processJob(ctx, node, job)
+			err := processJob(node, job)
 			if err != nil {
 				fmt.Printf("Job with ID: %s didnt work as planned [%s, %s]\n", job.ID, job.Action, job.Payload)
 			}
@@ -28,16 +29,24 @@ func StartWorker(ctx context.Context, node *node.Node, jobQueue <-chan event.Eve
 	}
 }
 
-func processJob(ctx context.Context, node *node.Node, job event.Event) error {
+func processJob(node *node.Node, job event.Event) error {
 	switch job.Action {
 	case event.ActionCreatePod:
-		pod, err := node.CreatePod(job.Payload)
+		servicename := job.Payload
+		pod, err := node.CreatePod(servicename)
 		if err != nil {
 			return err
 		}
 		fmt.Println(pod)
 	case event.ActionCreateService:
-		service, err := node.CreateService(job.Payload, "IP", "PORT")
+		payloadSlice := strings.Split(job.Payload, "+")
+		if len(payloadSlice) < 3 {
+			return fmt.Errorf("NOT ENOUGH ARGS")
+		}
+		servicename := payloadSlice[0]
+		ip := payloadSlice[1]
+		port := payloadSlice[2]
+		service, err := node.CreateService(servicename, ip, port)
 		if err != nil {
 			return err
 		}

@@ -13,7 +13,7 @@ type Node struct {
 	PodCIDR         string // ej: 10.244.1.0/24
 	LastSeen        time.Time
 	LoadBalancerUrl string
-	Services        map[string]Service
+	Services        map[string]*Service
 }
 
 func NewNode(hostname, ipAddr, podCIDR, url string) *Node {
@@ -23,7 +23,7 @@ func NewNode(hostname, ipAddr, podCIDR, url string) *Node {
 		PodCIDR:         podCIDR,
 		LoadBalancerUrl: url,
 		LastSeen:        time.Now(),
-		Services:        make(map[string]Service),
+		Services:        make(map[string]*Service),
 	}
 }
 
