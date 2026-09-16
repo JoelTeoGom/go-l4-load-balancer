@@ -40,5 +40,6 @@ func main() {
 	}
 
 	//Create Agent Worker to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
+
 	worker.StartWorker(ctx, node, eventJobs)
 }

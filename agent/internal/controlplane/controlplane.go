@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -17,9 +18,19 @@ import (
 
 // ControlPlane is the HTTP client the agent uses to talk to the load balancer's control plane.
 type ControlPlane struct {
-	Client     *http.Client
-	Node       *node.Node
-	EventQueue chan<- event.Event
+	Client       *http.Client
+	StreamClient StreamClient
+	Node         *node.Node
+	EventQueue   chan<- event.Event
+}
+
+// StreamClient is the SSE-tuned client used to keep the watch stream open.
+type StreamClient struct {
+	url         string
+	http        *http.Client
+	idleTimeout time.Duration // has to be  >  keepalive interval coming from server
+	retry       time.Duration
+	lastID      string
 }
 
 func NewControlPlane(node *node.Node, eventQueue chan<- event.Event) *ControlPlane {
@@ -34,6 +45,18 @@ func NewControlPlane(node *node.Node, eventQueue chan<- event.Event) *ControlPla
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
+		StreamClient: StreamClient{
+			http: &http.Client{ //!!!!!NO GLOBAL TIMEOUT: would kill stream
+				Transport: &http.Transport{
+					DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+					TLSHandshakeTimeout:   5 * time.Second,
+					ResponseHeaderTimeout: 10 * time.Second, // only until we receive headers
+				},
+			},
+			url:         node.LoadBalancerUrl,
+			idleTimeout: 45 * time.Second, // 3x  keepalive COMPARED FROM  15s server
+			retry:       3 * time.Second,  //SSE SPEC DEFAULTS
+		},
 	}
 }
 
@@ -45,42 +68,63 @@ func (cp *ControlPlane) UnregisterNode(ctx context.Context) error {
 	return cp.post(ctx, "/unregister-node", cp.Node.ID)
 }
 
-func (cp *ControlPlane) Watch(ctx context.Context) {
+func (cp *ControlPlane) Watch(ctx context.Context) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.StreamClient.url+"/watch-node", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cp.StreamClient.url+"/watch-node", nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
-	if w.StreamClient.lastID != "" {
-		req.Header.Set("Last-Event-ID", w.StreamClient.lastID) // TODO server can start FROM LAST ID STORED
+	if cp.StreamClient.lastID != "" {
+		req.Header.Set("Last-Event-ID", cp.StreamClient.lastID) // TODO server can start FROM LAST ID STORED
 	}
-	resp, err := w.StreamClient.http.Do(req)
+	resp, err := cp.StreamClient.http.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Error connecting watchdog to ctrlPlane %s", w.Node.ID)
+		return fmt.Errorf("Error connecting watchdog to ctrlPlane %s", cp.Node.ID)
 	}
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
 		return fmt.Errorf("unexpected content-type %q", ct)
 	}
 
 	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		line := sc.Bytes()
+		if len(line) == 0 {
+			continue
+		}
 
-	// El buffer por defecto es 64 KB por línea: un JSON grande en un data: lo rompe.
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	//TODO PROGRAM WATCH CLIENT LOGIC
-	for {
+		//Doing this For Fun :)
+		//ex: "id,action,payload+payload+payload"
+		strline := string(line)
+		eventline := strings.Split(strline, ",")
+		if len(eventline) < 3 {
+			continue //NOW WE ONLY ACCEPT EVENTS
+		}
+		event := event.Event{
+			ID:      eventline[0],
+			Action:  event.Action(eventline[1]),
+			Payload: eventline[2],
+		}
 
-		//encolar con cancelacion
-		select {}
+		sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+		select {
+		case cp.EventQueue <- event:
+		case <-ctx.Done():
+		case <-sendCtx.Done():
+		}
+
+		cancel()
 	}
+	return nil
 }
 
 func (cp *ControlPlane) post(ctx context.Context, path string, payload any) error {
