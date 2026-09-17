@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -29,6 +30,12 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	// IP dentro + lo up + ruta default al bridge
 	// lanzar el proceso con ip netns exec
 	// en el nodo: ip_forward=1 + MASQUERADE (salida) y DNAT (entrada)
+
+	//ip netns add pod-x
+	//add veth with iP and turn up,
+	//peer that veth with bridge (entiendo que hace de switch) i redirigir todo el trafico hacia el bridge
+	//quizas en el bridge voy a tener que crear una regla por cada pod, para rootearlos
+	//lanzar el proceso entiendo con el codigo dentro
 
 	service, ok := n.Services[serviceName]
 	if !ok || service == nil {
@@ -68,6 +75,14 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 		IP:     podIP,
 	}
 
+	//1. Create netns pod x
+	rule := fmt.Sprintf("add %s", pod.ID)
+	args := strings.Fields(rule)
+	cmd := exec.Command("ip netns", args...)
+	cmd.CombinedOutput()
+
+	//2.
+
 	// podSlice := service.Pods
 	// pod :=
 	// rule := "-t nat -A PREROUTING -j KUBE-SERVICES"
@@ -78,6 +93,7 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	//add if everything worked fine
 	service.Pods = append(service.Pods, pod)
 	return nil, nil
+
 }
 
 // ip netns add pod1

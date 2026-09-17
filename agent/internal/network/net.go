@@ -13,7 +13,6 @@ func ObtainOutboundIP() (string, error) {
 		return "", err
 	}
 	defer conn.Close()
-
 	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }
 

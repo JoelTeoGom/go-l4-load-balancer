@@ -14,6 +14,9 @@ type Node struct {
 	LastSeen        time.Time
 	LoadBalancerUrl string
 	Services        map[string]*Service
+
+	//0-255 IPs available between services in 1 NODE
+
 }
 
 func NewNode(hostname, ipAddr, podCIDR, url string) *Node {
@@ -40,6 +43,18 @@ func (n *Node) InitSetup() error {
 	args := strings.Fields(rule)
 	cmd = exec.Command("iptables", args...)
 	cmd.CombinedOutput()
+
+	//3. Setting up Destination NAT
+	rule = "-t nat -A POSTROUTING -o eth0 -j MASQUERADE"
+	args = strings.Fields(rule)
+	cmd = exec.Command("iptables", args...)
+	cmd.CombinedOutput()
+
+	//4. Setting up bridge
+	// crear el bridge
+	exec.Command("ip", "link", "add", "cni0", "type", "bridge")
+	exec.Command("ip", "addr", "add", "10.244.1.1/24", "dev", "cni0")
+	exec.Command("ip", "link", "set", "cni0", "up")
 
 	return nil
 }
