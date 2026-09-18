@@ -78,10 +78,10 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	//1. Create netns pod x
 	rule := fmt.Sprintf("add %s", pod.ID)
 	args := strings.Fields(rule)
-	cmd := exec.Command("ip netns", args...)
+	cmd := exec.Command("ipnetns", args...)
 	cmd.CombinedOutput()
 
-	//2.
+	//2. 
 
 	// podSlice := service.Pods
 	// pod :=
