@@ -31,7 +31,7 @@ func main() {
 
 	//Create Node and settup ip table rules
 	node := node.NewNode(hostname, localIP, " 10.244.1.0/24", cfg.LbAddress())
-	node.InitSetup()
+	node.InitNodeSetup()
 
 	//Register to ControlPlane
 	cp := controlplane.NewControlPlane(node, eventJobs)

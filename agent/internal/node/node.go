@@ -30,7 +30,7 @@ func NewNode(hostname, ipAddr, podCIDR, url string) *Node {
 	}
 }
 
-func (n *Node) InitSetup() error {
+func (n *Node) InitNodeSetup() error {
 	//1. Loading br_netfilter so bridged traffic goes through iptables
 	if err := run("modprobe br_netfilter"); err != nil {
 		return err
