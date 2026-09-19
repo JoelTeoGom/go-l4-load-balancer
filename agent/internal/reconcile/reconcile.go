@@ -1,4 +1,4 @@
-package worker
+package reconcile
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
 )
 
-func StartWorker(ctx context.Context, node *node.Node, jobQueue <-chan event.Event) error {
+func StartReconciler(ctx context.Context, node *node.Node, jobQueue <-chan event.Event) error {
 
 	for {
 		select {

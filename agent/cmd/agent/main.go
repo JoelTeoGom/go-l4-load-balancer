@@ -8,7 +8,7 @@ import (
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/network"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/worker"
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/reconcile"
 )
 
 func main() {
@@ -40,8 +40,8 @@ func main() {
 		panic(err)
 	}
 
-	//Create Agent Worker to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
-	go worker.StartWorker(ctx, node, eventJobs)
+	//Create Agent Reconciler to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
+	go reconcile.StartReconciler(ctx, node, eventJobs)
 	cp.Watch(ctx)
 
 }

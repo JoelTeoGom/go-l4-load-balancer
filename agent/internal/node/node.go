@@ -8,25 +8,25 @@ import (
 )
 
 type Node struct {
-	ID              string // ej: NODE-1
-	IP              string // ej: 192.168.1.51
-	PodCIDR         string // ej: 10.244.1.0/24
-	LastSeen        time.Time
-	LoadBalancerUrl string
-	Services        map[string]*Service
+	ID        string // ej: NODE-1
+	IP        string // ej: 192.168.1.51
+	PodCIDR   string // ej: 10.244.1.0/24
+	LastSeen  time.Time
+	MasterURL string
+	Services  map[string]*Service
 
 	//0-255 IPs available between services in 1 NODE
-
+	AvailableIPs []string //Ips from 2-255
 }
 
 func NewNode(hostname, ipAddr, podCIDR, url string) *Node {
 	return &Node{
-		ID:              hostname,
-		IP:              ipAddr,
-		PodCIDR:         podCIDR,
-		LoadBalancerUrl: url,
-		LastSeen:        time.Now(),
-		Services:        make(map[string]*Service),
+		ID:        hostname,
+		IP:        ipAddr,
+		PodCIDR:   podCIDR,
+		MasterURL: url,
+		LastSeen:  time.Now(),
+		Services:  make(map[string]*Service),
 	}
 }
 

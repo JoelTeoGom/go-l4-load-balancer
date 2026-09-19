@@ -5,16 +5,18 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Pod struct {
-	ID     string
-	NodeID string
-	IP     string // 10.244.1.11
-	Port   string // 8080
-	Status Status // Pending / Running / Failed
+	ID          string
+	ServiceName string
+	IP          string // 10.244.1.5
+	NetNS       string // /var/run/netns/pod-abc
+	VethHost    string // veth par del lado del host, para poder limpiarlo
+	Status      Status // pending | running | failed
+	CreatedAt   time.Time
 }
-
 type Status string
 
 const (
@@ -24,19 +26,35 @@ const (
 )
 
 func (n *Node) CreatePod(serviceName string) (*Pod, error) {
-	//COMO CREAR POD
-	// ip netns add pod1
-	// veth pair, un extremo al netns, el otro al bridge
-	// IP dentro + lo up + ruta default al bridge
-	// lanzar el proceso con ip netns exec
-	// en el nodo: ip_forward=1 + MASQUERADE (salida) y DNAT (entrada)
+	// 3. Cambiar los backends (crear o destruir un pod)
 
-	//ip netns add pod-x
-	//add veth with iP and turn up,
-	//peer that veth with bridge (entiendo que hace de switch) i redirigir todo el trafico hacia el bridge
-	//quizas en el bridge voy a tener que crear una regla por cada pod, para rootearlos
-	//lanzar el proceso entiendo con el codigo dentro
+	// Se vacía la cadena y se reescribe entera, porque las probabilidades se recalculan.
 
+	// Un backend:
+
+	// iptables -t nat -F KUBE-SVC-API
+	// iptables -t nat -N KUBE-SEP-API-1
+	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-1
+	// iptables -t nat -A KUBE-SEP-API-1 -p tcp -j DNAT --to-destination 10.244.1.5:8080
+
+	// Dos backends:
+
+	// iptables -t nat -F KUBE-SVC-API
+	// iptables -t nat -N KUBE-SEP-API-2
+	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.50000 -j KUBE-SEP-API-1
+	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-2
+	// iptables -t nat -A KUBE-SEP-API-2 -p tcp -j DNAT --to-destination 10.244.1.6:8080
+
+	// Tres, el último en otro nodo:
+
+	// iptables -t nat -F KUBE-SVC-API
+	// iptables -t nat -N KUBE-SEP-API-C
+	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.33333 -j KUBE-SEP-API-1
+	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.50000 -j KUBE-SEP-API-2
+	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-C
+	// iptables -t nat -A KUBE-SEP-API-C -p tcp -j DNAT --to-destination 192.168.1.22:30081
+
+	// Probabilidades 1/n, 1/(n-1), …, y la última regla sin --probability.
 	service, ok := n.Services[serviceName]
 	if !ok || service == nil {
 		return nil, fmt.Errorf("Service unavailable to create a pod!")
@@ -81,7 +99,7 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	cmd := exec.Command("ipnetns", args...)
 	cmd.CombinedOutput()
 
-	//2. 
+	//2.
 
 	// podSlice := service.Pods
 	// pod :=
