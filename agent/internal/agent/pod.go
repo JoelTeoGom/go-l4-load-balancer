@@ -12,8 +12,8 @@ type Pod struct {
 	ID          string
 	ServiceName string
 	IP          string // 10.244.1.5
-	NetNS       string // /var/run/netns/pod-abc
-	VethHost    string // veth par del lado del host, para poder limpiarlo
+	NetNS       string // NetNS name
+	VethHost    string // veth host peer
 	Status      Status // pending | running | failed
 	CreatedAt   time.Time
 }
@@ -24,6 +24,17 @@ const (
 	StatusRunning Status = "RUNNING"
 	StatusFailed  Status = "FAILED"
 )
+
+func NewPod(id, serviceName, ip string) *Pod {
+	return &Pod{
+		ID:          id,
+		ServiceName: serviceName,
+		IP:          ip,
+		NetNS:       id,
+		Status:      StatusPending,
+		CreatedAt:   time.Now(),
+	}
+}
 
 func (n *Agent) CreatePod(serviceName string) (*Pod, error) {
 	// 3. Cambiar los backends (crear o destruir un pod)
@@ -85,13 +96,7 @@ func (n *Agent) CreatePod(serviceName string) (*Pod, error) {
 	ipBytes := []byte(ip)
 	ipBytes = ipBytes[:len(ipBytes)-1]
 	podIP := fmt.Sprintf("%s%d", string(ipBytes), hostValue)
-	pod := &Pod{
-		ID:     id,
-		NodeID: n.NodeID,
-		Port:   service.Port,
-		Status: StatusPending,
-		IP:     podIP,
-	}
+	pod := NewPod(id, serviceName, podIP)
 
 	//1. Create netns pod x
 	rule := fmt.Sprintf("add %s", pod.ID)

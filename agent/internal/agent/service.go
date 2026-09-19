@@ -8,7 +8,7 @@ type Service struct {
 	ClusterIP   string
 	ClusterPort string //the une used combined with Cluster IP
 
-	PodPort string //the one that we use inside PODs (maybe we need it to curl)
+	PodPort string //the one that we use inside PODs (maybe we need it to curl)  HEALTH ISSUES
 
 	NodePort string //The one combined with NodeIP:NodePort used to identify remote SERVICE
 
@@ -17,18 +17,25 @@ type Service struct {
 
 }
 
-func (n *Agent) CreateService(name, clusterIP, clusterPort, NodePort string) (*Service, error) {
-	if service, ok := n.Services[serviceName]; ok {
+func NewService(name, clusterIP, clusterPort, nodePort, podPort string) *Service {
+	return &Service{
+		Name:        name,
+		ClusterIP:   clusterIP,
+		ClusterPort: clusterPort,
+		PodPort:     podPort,
+		NodePort:    nodePort,
+		LocalPods:   []*Pod{},
+		RemoteNode:  []string{},
+	}
+}
+
+func (n *Agent) CreateService(name, clusterIP, clusterPort, nodePort, podPort string) (*Service, error) {
+	if service, ok := n.Services[name]; ok {
 		return service, nil
 	}
 
-	newService := &Service{
-		Name: serviceName,
-		// IP:   IP,
-		// Port: port,
-		// Pods: make([]*Pod, 0),
-	}
-	n.Services[serviceName] = newService
+	newService := NewService(name, clusterIP, clusterPort, nodePort, podPort)
+	n.Services[name] = newService
 
 	newService.CreateServiceSetup()
 
