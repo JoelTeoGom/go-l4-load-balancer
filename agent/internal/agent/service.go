@@ -1,4 +1,4 @@
-package node
+package agent
 
 import "fmt"
 
@@ -17,7 +17,7 @@ type Service struct {
 
 }
 
-func (n *Node) CreateService(name, clusterIP, clusterPort, NodePort string) (*Service, error) {
+func (n *Agent) CreateService(name, clusterIP, clusterPort, NodePort string) (*Service, error) {
 	if service, ok := n.Services[serviceName]; ok {
 		return service, nil
 	}

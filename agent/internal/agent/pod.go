@@ -1,4 +1,4 @@
-package node
+package agent
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ const (
 	StatusFailed  Status = "FAILED"
 )
 
-func (n *Node) CreatePod(serviceName string) (*Pod, error) {
+func (n *Agent) CreatePod(serviceName string) (*Pod, error) {
 	// 3. Cambiar los backends (crear o destruir un pod)
 
 	// Se vacía la cadena y se reescribe entera, porque las probabilidades se recalculan.
@@ -62,7 +62,7 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 
 	podSlice := service.Pods
 	podPrefix := len(service.Pods)
-	id := fmt.Sprintf("%s-SERVICE-%s-POD-%d", n.ID, serviceName, podPrefix)
+	id := fmt.Sprintf("%s-SERVICE-%s-POD-%d", n.NodeID, serviceName, podPrefix)
 
 	ipMASK := strings.Split(n.PodCIDR, "/")
 	if len(ipMASK) < 2 {
@@ -87,7 +87,7 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 	podIP := fmt.Sprintf("%s%d", string(ipBytes), hostValue)
 	pod := &Pod{
 		ID:     id,
-		NodeID: n.ID,
+		NodeID: n.NodeID,
 		Port:   service.Port,
 		Status: StatusPending,
 		IP:     podIP,
@@ -120,12 +120,12 @@ func (n *Node) CreatePod(serviceName string) (*Pod, error) {
 // lanzar el proceso con ip netns exec
 // en el nodo: ip_forward=1 + MASQUERADE (salida) y DNAT (entrada)
 
-func (n *Node) RemovePod(pod *Pod) (*Pod, error) {
+func (n *Agent) RemovePod(pod *Pod) (*Pod, error) {
 	//ENVIAR UN SIGTERM I LUEGO SIGKILL I MATAMOS EL PROCESO
 	return nil, nil
 }
 
-func (n *Node) CheckPodHealth(pod *Pod) (Status, error) {
+func (n *Agent) CheckPodHealth(pod *Pod) (Status, error) {
 	//PATCH contra pod para ver current STATUS
 	return "", nil
 }

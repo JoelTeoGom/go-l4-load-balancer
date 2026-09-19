@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
 )
 
-func StartReconciler(ctx context.Context, node *node.Node, jobQueue <-chan event.Event) error {
+func StartReconciler(ctx context.Context, node *agent.Agent, jobQueue <-chan event.Event) error {
 
 	for {
 		select {
@@ -29,7 +29,7 @@ func StartReconciler(ctx context.Context, node *node.Node, jobQueue <-chan event
 	}
 }
 
-func processJob(node *node.Node, job event.Event) error {
+func processJob(node *agent.Agent, job event.Event) error {
 	switch job.Action {
 	case event.ActionCreatePod:
 		servicename := job.Payload

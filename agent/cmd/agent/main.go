@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/config"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/controlplane"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/network"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/reconcile"
 )
 
@@ -30,7 +30,10 @@ func main() {
 	defer close(eventJobs)
 
 	//Create Node and settup ip table rules
-	node := node.NewNode(hostname, localIP, " 10.244.1.0/24", cfg.LbAddress())
+	node, err := agent.NewAgent(hostname, localIP, "10.244.1.0/24", "br0", "10.244.1.1/24", cfg.LbAddress())
+	if err != nil {
+		panic(err)
+	}
 	node.InitNodeSetup()
 
 	//Register to ControlPlane

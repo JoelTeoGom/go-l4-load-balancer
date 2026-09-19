@@ -12,15 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/node"
 )
 
 // ControlPlane is the HTTP client the agent uses to talk to the load balancer's control plane.
 type ControlPlane struct {
 	Client       *http.Client
 	StreamClient StreamClient
-	Node         *node.Node
+	Node         *agent.Agent
 	EventQueue   chan<- event.Event
 }
 
@@ -33,7 +33,7 @@ type StreamClient struct {
 	lastID      string
 }
 
-func NewControlPlane(node *node.Node, eventQueue chan<- event.Event) *ControlPlane {
+func NewControlPlane(node *agent.Agent, eventQueue chan<- event.Event) *ControlPlane {
 	return &ControlPlane{
 		EventQueue: eventQueue,
 		Node:       node,
@@ -53,7 +53,7 @@ func NewControlPlane(node *node.Node, eventQueue chan<- event.Event) *ControlPla
 					ResponseHeaderTimeout: 10 * time.Second, // only until we receive headers
 				},
 			},
-			url:         node.LoadBalancerUrl,
+			url:         node.ControlPlaneURL,
 			idleTimeout: 45 * time.Second, // 3x  keepalive COMPARED FROM  15s server
 			retry:       3 * time.Second,  //SSE SPEC DEFAULTS
 		},
@@ -61,11 +61,11 @@ func NewControlPlane(node *node.Node, eventQueue chan<- event.Event) *ControlPla
 }
 
 func (cp *ControlPlane) RegisterNode(ctx context.Context) error {
-	return cp.post(ctx, "/register-node", cp.Node.ID)
+	return cp.post(ctx, "/register-node", cp.Node.NodeID)
 }
 
 func (cp *ControlPlane) UnregisterNode(ctx context.Context) error {
-	return cp.post(ctx, "/unregister-node", cp.Node.ID)
+	return cp.post(ctx, "/unregister-node", cp.Node.NodeID)
 }
 
 func (cp *ControlPlane) Watch(ctx context.Context) error {
@@ -88,7 +88,7 @@ func (cp *ControlPlane) Watch(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("Error connecting watchdog to ctrlPlane %s", cp.Node.ID)
+		return fmt.Errorf("Error connecting watchdog to ctrlPlane %s", cp.Node.NodeID)
 	}
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
 		return fmt.Errorf("unexpected content-type %q", ct)
@@ -131,7 +131,7 @@ func (cp *ControlPlane) post(ctx context.Context, path string, payload any) erro
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	endpoint := cp.Node.LoadBalancerUrl + path
+	endpoint := cp.Node.ControlPlaneURL + path
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(requestBody))
 	if err != nil {
 		return fmt.Errorf("new request: %w", err)
