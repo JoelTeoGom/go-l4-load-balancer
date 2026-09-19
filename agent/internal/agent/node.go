@@ -15,8 +15,10 @@ type Agent struct {
 	ControlPlaneURL string
 	Services        map[string]*Service
 
-	//0-255 IPs available between services in 1 NODE
-	AvailableIPs []string //Ips from 2-255
+	//IPs already allocated inside PodCIDR shared by all services in 1 NODE (gateway included)
+	//len(AllocatedIPs) is used as pointer to the next free IP
+	//(valid pod IPs for /24: .2 - .254 -> 253 IPs; .0 network, .1 gateway, .255 broadcast are reserved)
+	AllocatedIPs []string
 }
 
 type Bridge struct {
@@ -30,12 +32,15 @@ func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL st
 		return nil, fmt.Errorf("invalid pod CIDR %q: %w", podCIDR, err)
 	}
 
-	//Usable pod IPs: skipping network address (.0) and gateway (.1)
+	//Allocatable IPs (.1 - .254 for a /24): gateway (.1) + pod IPs (.2 - .254), skipping network (.0) and broadcast (.255)
 	maskOnes, maskBits := podNetwork.Mask.Size()
-	availableIPsCapacity := 1<<(maskBits-maskOnes) - 2
-	if availableIPsCapacity < 0 {
-		availableIPsCapacity = 0
+	allocatedIPsCapacity := 1<<(maskBits-maskOnes) - 2
+	if allocatedIPsCapacity < 0 {
+		allocatedIPsCapacity = 0
 	}
+
+	allocatedIPs := make([]string, 0, allocatedIPsCapacity)
+	allocatedIPs = append(allocatedIPs, gatewayIP)
 
 	return &Agent{
 		NodeID:  nodeID,
@@ -47,7 +52,7 @@ func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL st
 		},
 		ControlPlaneURL: controlPlaneURL,
 		Services:        make(map[string]*Service),
-		AvailableIPs:    make([]string, 0, availableIPsCapacity),
+		AllocatedIPs:    allocatedIPs,
 	}, nil
 }
 
@@ -98,4 +103,31 @@ func run(command string) error {
 		return fmt.Errorf("%s: %w: %s", command, err, out)
 	}
 	return nil
+}
+
+// helper we use to return IPs inside a NODE private net
+// Valid IPs (for PodCIDR 10.244.1.0/24): 10.244.1.2 - 10.244.1.254 (253 IPs)
+// Reserved: 10.244.1.0 (network), 10.244.1.1 (gateway/bridge), 10.244.1.255 (broadcast)
+func (a *Agent) GetNextIP() (string, error) {
+	_, podNetwork, err := net.ParseCIDR(a.PodCIDR)
+	if err != nil {
+		return "", fmt.Errorf("invalid pod CIDR %q: %w", a.PodCIDR, err)
+	}
+	maskOnes, maskBits := podNetwork.Mask.Size()
+	allocatedIPsCapacity := 1<<(maskBits-maskOnes) - 2
+	if allocatedIPsCapacity < 0 {
+		allocatedIPsCapacity = 0
+	}
+
+	nextIP := len(a.AllocatedIPs) + 1
+	if nextIP >= allocatedIPsCapacity {
+		return "", fmt.Errorf("Exceeded number of IPs")
+	}
+
+	basicIP := podNetwork.IP.String()
+	ipBytes := []byte(basicIP)
+	ipBytes = ipBytes[:len(ipBytes)-1]
+	podIP := fmt.Sprintf("%s%d", string(ipBytes), nextIP)
+	a.AllocatedIPs = append(a.AllocatedIPs, podIP)
+	return podIP, nil
 }
