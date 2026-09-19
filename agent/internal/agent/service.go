@@ -13,7 +13,7 @@ type Service struct {
 	NodePort string //The one combined with NodeIP:NodePort used to identify remote SERVICE
 
 	LocalPods  []*Pod
-	RemoteNode []string //NODES that have available pods (THIS service pods)
+	RemoteNode []Backend //NODES that have available pods (THIS service pods)
 
 }
 
@@ -25,7 +25,7 @@ func NewService(name, clusterIP, clusterPort, nodePort, podPort string) *Service
 		PodPort:     podPort,
 		NodePort:    nodePort,
 		LocalPods:   []*Pod{},
-		RemoteNode:  []string{},
+		RemoteNode:  []Backend{},
 	}
 }
 

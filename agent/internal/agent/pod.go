@@ -58,43 +58,28 @@ func (a *Agent) CreatePod(serviceName string) (*Pod, error) {
 	kubeService := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, serviceName)
 	podID := fmt.Sprintf("%s-%d", kubeService, podPrefix)
 
-	if err := SetupPodIptables(kubeService, podID, podIP, service.PodPort); err != nil {
-		return nil, err
-	}
-
 	pod := NewPod(podID, serviceName, podIP)
 
 	if err := a.SetupPodNetwork(pod); err != nil {
 		return nil, err
 	}
 
-	podSlice = append(podSlice, pod)
+	service.LocalPods = append(service.LocalPods, pod)
+
+	if err := service.SetupPodIptables(kubeService, pod); err != nil {
+		return nil, err
+	}
+
 	// 3. Cambiar los backends (crear o destruir un pod)
-
-	// Se vacía la cadena y se reescribe entera, porque las probabilidades se recalculan.
-
-	// Un backend:
-
-	// iptables -t nat -F KUBE-SVC-API x
-	// iptables -t nat -N KUBE-SEP-API-1 x
-	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-1 x
-	// iptables -t nat -A KUBE-SEP-API-1 -p tcp -j DNAT --to-destination 10.244.1.5:8080
-
-	// Dos backends:
-
-	// iptables -t nat -F KUBE-SVC-API
-	// iptables -t nat -N KUBE-SEP-API-2
-	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.50000 -j KUBE-SEP-API-1
-	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-2
-	// iptables -t nat -A KUBE-SEP-API-2 -p tcp -j DNAT --to-destination 10.244.1.6:8080
-
-	// Tres, el último en otro nodo:
+	// Tres backends, el último en otro nodo:
 
 	// iptables -t nat -F KUBE-SVC-API
 	// iptables -t nat -N KUBE-SEP-API-C
+
 	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.33333 -j KUBE-SEP-API-1
 	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.50000 -j KUBE-SEP-API-2
 	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-C
+
 	// iptables -t nat -A KUBE-SEP-API-C -p tcp -j DNAT --to-destination 192.168.1.22:30081
 
 	//we give CTRL plane ACTION TO
@@ -104,29 +89,62 @@ func (a *Agent) CreatePod(serviceName string) (*Pod, error) {
 	return nil, nil
 }
 
-// SetupPodIptables flushes the service chain and adds the pod endpoint chain with its DNAT rule
-func SetupPodIptables(kubeService, podID, podIP, podPort string) error {
+// SetupPodIptables creates the new pod endpoint chain and rewrites the service chain with a jump to every backend
+// Probabilities are 1/n, 1/(n-1), ..., and the last rule has no probability so it takes whatever is left
+func (s *Service) SetupPodIptables(kubeService string, pod *Pod) error {
+
+	//1. Flushing service chain, it is rewritten entirely because probabilities change
 	args := fmt.Sprintf("iptables -t nat -F %s", kubeService)
 	if err := run(args); err != nil {
 		return err
 	}
 
-	args = fmt.Sprintf("iptables -t nat -N %s", podID)
+	//2. Creating Backends
+	backends := s.Backends()
+	backends = append(backends, Backend{IP: pod.IP, Port: s.PodPort})
+	backendCount := len(backends)
+	//3. Creating new pod endpoint chain with its DNAT to the pod
+	args = fmt.Sprintf("iptables -t nat -N %s", pod.ID)
+	if err := run(args); err != nil {
+		return err
+	}
+	args = fmt.Sprintf("iptables -t nat -A %s -p tcp -j DNAT --to-destination %s:%s", pod.ID, pod.IP, s.PodPort)
 	if err := run(args); err != nil {
 		return err
 	}
 
-	args = fmt.Sprintf("iptables -t nat -A %s -j %s", kubeService, podID)
-	if err := run(args); err != nil {
-		return err
-	}
-
-	args = fmt.Sprintf("iptables -t nat -A %s -p tcp -j DNAT --to-destination %s:%s", podID, podIP, podPort)
-	if err := run(args); err != nil {
-		return err
+	//4. Jumping from service chain to every backend
+	for backendIndex, backend := range backends {
+		if backendIndex == backendCount-1 {
+			args = fmt.Sprintf("iptables -t nat -A %s -p tcp -j %s", kubeService, backend.ID)
+		} else {
+			probability := 1.0 / float64(backendCount-backendIndex)
+			args = fmt.Sprintf("iptables -t nat -A %s -p tcp -m statistic --mode random --probability %.5f -j %s", kubeService, probability, backend.ID)
+		}
+		if err := run(args); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// Backends returns local pods first and then remote nodes that also serve this service
+func (s *Service) Backends() []Backend {
+	var backends []Backend
+	for _, pod := range s.LocalPods {
+		backends = append(backends, Backend{ID: pod.ID, IP: pod.IP, Port: s.PodPort})
+	}
+	for _, externalBackend := range s.RemoteNode {
+		backends = append(backends, externalBackend)
+	}
+	return backends
+}
+
+type Backend struct {
+	ID   string
+	IP   string
+	Port string
 }
 
 // SetupPodNetwork creates the pod netns, wires it to the node bridge with a veth pair and configures IP + default route
