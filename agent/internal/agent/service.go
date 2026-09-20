@@ -55,16 +55,16 @@ func (s *Service) CreateServiceSetup(name string) {
 	run(args)
 
 	//2. Jumping from KUBE-SERVICES to service chain (ClusterIP and NodePort)
-	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", s.ClusterIP, s.ClusterPort)
+	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", s.ClusterIP, s.ClusterPort, serviceName)
 	run(args)
 
 	for _, backend := range s.RemoteNode {
-		args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", backend.IP, s.NodePort)
+		args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", backend.IP, s.NodePort, serviceName)
 		run(args)
 	}
 
 	//3. Rejecting traffic while service has no pods
-	run("iptables -t nat -A KUBE-SVC-API -j REJECT --reject-with icmp-port-unreachable")
+	run(fmt.Sprintf("iptables -t nat -A %s -j REJECT --reject-with icmp-port-unreachable", serviceName))
 }
 
 // Backends returns local pods first and then remote nodes that also serve this service

@@ -122,7 +122,8 @@ func (a *Agent) GetNextIP() (string, error) {
 	return "", fmt.Errorf("sin IPs libres en %s", a.PodCIDR)
 }
 func (a *Agent) ReleaseIP(releasedIP string) error {
-	if _, ok := a.allocated[releasedIP]; !ok {
+	ip, ok := a.allocated[releasedIP]
+	if !ip || !ok {
 		return fmt.Errorf("Ip already released!")
 	}
 	a.allocated[releasedIP] = false
