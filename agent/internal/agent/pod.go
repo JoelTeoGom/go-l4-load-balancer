@@ -40,12 +40,20 @@ func NewPod(id, serviceName, ip string) *Pod {
 	}
 }
 
-func (a *Agent) CreatePod(serviceName string) (*Pod, error) {
+// TODO(rollback): partial failures leave orphan state behind.
+// The pod is only appended to LocalPods once everything succeeded, so the in-memory
+// state stays clean, but the kernel state does not:
+//   - GetNextIP marks the IP as allocated; no error path calls ReleaseIP.
+//   - SetupPodNetwork may fail halfway, leaving the netns and the veth pair behind.
+//   - SetupPodIptables flushes the service chain first, so a failure after that point
+//     leaves it empty: no REJECT rule and no backends, i.e. the service blackholes.
+//
+// Each step needs its undo, run in reverse order on error.
+func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 	service, ok := a.Services[serviceName]
 	if !ok || service == nil {
 		return nil, fmt.Errorf("Service unavailable to create a pod!")
 	}
-
 	podSlice := service.LocalPods
 
 	podIP, err := a.GetNextIP()
@@ -53,23 +61,27 @@ func (a *Agent) CreatePod(serviceName string) (*Pod, error) {
 		return nil, err
 	}
 
+	defer func() {
+		if err != nil {
+			a.ReleaseIP(podIP)
+		}
+	}()
+
 	podPrefix := len(podSlice)
 
 	kubeService := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, serviceName)
 	podID := fmt.Sprintf("%s-%d", kubeService, podPrefix)
 
-	pod := NewPod(podID, serviceName, podIP)
+	pod = NewPod(podID, serviceName, podIP)
 
-	if err := a.SetupPodNetwork(pod); err != nil {
+	if err = a.SetupPodNetwork(pod); err != nil {
 		return nil, err
 	}
 
+	if err = service.SetupPodIptables(kubeService, pod); err != nil {
+		return nil, err
+	}
 	service.LocalPods = append(service.LocalPods, pod)
-
-	if err := service.SetupPodIptables(kubeService, pod); err != nil {
-		return nil, err
-	}
-
 	// 3. Cambiar los backends (crear o destruir un pod)
 	// Tres backends, el último en otro nodo:
 

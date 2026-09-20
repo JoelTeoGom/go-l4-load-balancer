@@ -130,6 +130,8 @@ func (cp *ControlPlane) CreatePodHandler(w http.ResponseWriter, r *http.Request)
 		Payload: "datAAAAAA",
 	}
 
+	//TODO WE NEED LOGIC TO SELECT WHICH NODE WILL TAKE THE POD AND THEN WE NEED TO BROADCAST THE OTHER PODS
+
 	//try to push if we dont have space we discard until next (we also use queue to rate limit)
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()

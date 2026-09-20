@@ -42,12 +42,12 @@ func (n *Agent) CreateService(name, clusterIP, clusterPort, nodePort, podPort st
 	newService := NewService(name, clusterIP, clusterPort, nodePort, podPort)
 	n.Services[name] = newService
 
-	newService.CreateServiceSetup(name)
+	newService.CreateServiceSetup(name, n.NodeIP)
 
 	return newService, nil
 }
 
-func (s *Service) CreateServiceSetup(name string) {
+func (s *Service) CreateServiceSetup(name, nodeIP string) {
 	//1. Creating service chain
 
 	serviceName := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, name)
@@ -58,10 +58,8 @@ func (s *Service) CreateServiceSetup(name string) {
 	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", s.ClusterIP, s.ClusterPort, serviceName)
 	run(args)
 
-	for _, backend := range s.RemoteNode {
-		args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", backend.IP, s.NodePort, serviceName)
-		run(args)
-	}
+	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", nodeIP, s.NodePort, serviceName)
+	run(args)
 
 	//3. Rejecting traffic while service has no pods
 	run(fmt.Sprintf("iptables -t nat -A %s -j REJECT --reject-with icmp-port-unreachable", serviceName))
