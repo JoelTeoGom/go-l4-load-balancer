@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 
 type Service struct {
 	Name string
@@ -12,8 +15,8 @@ type Service struct {
 
 	NodePort string //The one combined with NodeIP:NodePort used to identify remote SERVICE
 
-	LocalPods  []*Pod
-	RemoteNode []Backend //NODES that have available pods (THIS service pods)
+	LocalPods      []*Pod
+	RemoteBackends []Backend //NODES that have available pods (THIS service pods)
 
 	//pod IDs already handed out for this service, same idea as Agent.allocated for IPs
 	//a released ID goes back to false so the index can be reused without shifting the others
@@ -27,15 +30,47 @@ type Backend struct {
 
 func NewService(name, clusterIP, clusterPort, nodePort, podPort string) *Service {
 	return &Service{
-		Name:        name,
-		ClusterIP:   clusterIP,
-		ClusterPort: clusterPort,
-		PodPort:     podPort,
-		NodePort:    nodePort,
-		LocalPods:   []*Pod{},
-		RemoteNode:  []Backend{},
-		takenIDs:    map[string]bool{},
+		Name:           name,
+		ClusterIP:      clusterIP,
+		ClusterPort:    clusterPort,
+		PodPort:        podPort,
+		NodePort:       nodePort,
+		LocalPods:      []*Pod{},
+		RemoteBackends: []Backend{},
+		takenIDs:       map[string]bool{},
 	}
+}
+
+// NodePort range the control plane must respect, same one Kubernetes uses
+const (
+	nodePortMin = 30000
+	nodePortMax = 32767
+)
+
+// parsePort rejects anything that is not a usable TCP port
+// The payload reaches the agent as plain text from another process, so it is validated
+// here as well even when the control plane already checked it
+func parsePort(port string) (int, error) {
+	number, err := strconv.Atoi(port)
+	if err != nil {
+		return 0, fmt.Errorf("port %q is not a number: %w", port, err)
+	}
+	if number < 1 || number > 65535 {
+		return 0, fmt.Errorf("port %d is out of range 1-65535", number)
+	}
+	return number, nil
+}
+
+// parseNodePort also checks the port falls inside the NodePort range
+func parseNodePort(port string) (int, error) {
+	number, err := parsePort(port)
+	if err != nil {
+		return 0, err
+	}
+	if number < nodePortMin || number > nodePortMax {
+		return 0, fmt.Errorf("node port %d is out of range %d-%d", number, nodePortMin, nodePortMax)
+	}
+	return number, nil
 }
 
 func (n *Agent) CreateService(name, clusterIP, clusterPort, nodePort, podPort string) (*Service, error) {
@@ -43,27 +78,54 @@ func (n *Agent) CreateService(name, clusterIP, clusterPort, nodePort, podPort st
 		return service, nil
 	}
 
-	newService := NewService(name, clusterIP, clusterPort, nodePort, podPort)
-	n.Services[name] = newService
+	if _, err := parsePort(clusterPort); err != nil {
+		return nil, fmt.Errorf("service %s cluster port: %w", name, err)
+	}
+	if _, err := parsePort(podPort); err != nil {
+		return nil, fmt.Errorf("service %s pod port: %w", name, err)
+	}
+	if _, err := parseNodePort(nodePort); err != nil {
+		return nil, fmt.Errorf("service %s node port: %w", name, err)
+	}
 
-	newService.CreateServiceSetup(name, n.NodeIP)
+	newService := NewService(name, clusterIP, clusterPort, nodePort, podPort)
+
+	// registered only once the rules are in place, so a half set up service never
+	// ends up in the map for CreatePod to trip over
+	if err := newService.CreateServiceSetup(name, n.NodeIP); err != nil {
+		return nil, err
+	}
+	n.Services[name] = newService
 
 	return newService, nil
 }
 
-func (s *Service) CreateServiceSetup(name, nodeIP string) {
+func (s *Service) CreateServiceSetup(name, nodeIP string) error {
 	//1. Creating service chain
 
 	serviceName := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, name)
-	run("iptables", "-t", "nat", "-N", serviceName)
+	if err := runIgnoreExists("iptables", "-t", "nat", "-N", serviceName); err != nil {
+		return err
+	}
 
 	//2. Jumping from KUBE-SERVICES to service chain (ClusterIP and NodePort)
-	run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", s.ClusterIP, "-p", "tcp", "--dport", s.ClusterPort, "-j", serviceName)
+	// /32 is what iptables assumes for a bare host address, spelled out so the rule
+	// reads the same here as it does in iptables -S
+	if err := run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", s.ClusterIP+"/32", "-p", "tcp", "--dport", s.ClusterPort, "-j", serviceName); err != nil {
+		return err
+	}
 
-	run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", nodeIP, "-p", "tcp", "--dport", s.NodePort, "-j", serviceName)
+	if err := run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", nodeIP+"/32", "-p", "tcp", "--dport", s.NodePort, "-j", serviceName); err != nil {
+		return err
+	}
 
 	//3. Rejecting traffic while service has no pods
-	run("iptables", "-t", "nat", "-A", serviceName, "-j", "REJECT", "--reject-with", "icmp-port-unreachable")
+	// icmp-port-unreachable so a client fails right away instead of waiting for a timeout
+	if err := run("iptables", "-t", "nat", "-A", serviceName, "-j", "REJECT", "--reject-with", "icmp-port-unreachable"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetNextPodID returns the lowest free pod ID for this service and marks it as taken
@@ -72,7 +134,7 @@ func (s *Service) CreateServiceSetup(name, nodeIP string) {
 func (s *Service) GetNextPodID() (string, error) {
 	// with n IDs known, index n is free at worst, so the scan always terminates
 	for index := 0; index <= len(s.takenIDs); index++ {
-		podID := fmt.Sprintf("%s-%s-%d", KubeServiceChainPrefix, s.Name, index)
+		podID := fmt.Sprintf("%s-%s-%d", KubeEndpointChainPrefix, s.Name, index)
 		if !s.takenIDs[podID] {
 			s.takenIDs[podID] = true
 			return podID, nil
@@ -96,7 +158,7 @@ func (s *Service) Backends() []Backend {
 	for _, pod := range s.LocalPods {
 		backends = append(backends, Backend{ID: pod.ID, IP: pod.IP, Port: s.PodPort})
 	}
-	for _, externalBackend := range s.RemoteNode {
+	for _, externalBackend := range s.RemoteBackends {
 		backends = append(backends, externalBackend)
 	}
 	return backends

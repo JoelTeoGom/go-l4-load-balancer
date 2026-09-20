@@ -9,7 +9,10 @@ import (
 )
 
 const (
-	KubeServiceChainPrefix = "KUBE-SVC"
+	// KUBE-SVC-<service> holds the load balancing rules, KUBE-SEP-<service>-<n> is one
+	// endpoint chain per pod, so iptables -S tells them apart at a glance
+	KubeServiceChainPrefix  = "KUBE-SVC"
+	KubeEndpointChainPrefix = "KUBE-SEP"
 )
 
 type Pod struct {
