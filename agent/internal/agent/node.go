@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os/exec"
@@ -18,7 +19,7 @@ type Agent struct {
 	//IPs already allocated inside PodCIDR shared by all services in 1 NODE (gateway included)
 	//len(AllocatedIPs) is used as pointer to the next free IP
 	//(valid pod IPs for /24: .2 - .254 -> 253 IPs; .0 network, .1 gateway, .255 broadcast are reserved)
-	AllocatedIPs []string
+	allocated map[string]bool
 }
 
 type Bridge struct {
@@ -27,21 +28,6 @@ type Bridge struct {
 }
 
 func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL string) (*Agent, error) {
-	_, podNetwork, err := net.ParseCIDR(podCIDR)
-	if err != nil {
-		return nil, fmt.Errorf("invalid pod CIDR %q: %w", podCIDR, err)
-	}
-
-	//Allocatable IPs (.1 - .254 for a /24): gateway (.1) + pod IPs (.2 - .254), skipping network (.0) and broadcast (.255)
-	maskOnes, maskBits := podNetwork.Mask.Size()
-	allocatedIPsCapacity := 1<<(maskBits-maskOnes) - 2
-	if allocatedIPsCapacity < 0 {
-		allocatedIPsCapacity = 0
-	}
-
-	allocatedIPs := make([]string, 0, allocatedIPsCapacity)
-	allocatedIPs = append(allocatedIPs, gatewayIP)
-
 	return &Agent{
 		NodeID:  nodeID,
 		NodeIP:  nodeIP,
@@ -52,7 +38,7 @@ func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL st
 		},
 		ControlPlaneURL: controlPlaneURL,
 		Services:        make(map[string]*Service),
-		AllocatedIPs:    allocatedIPs,
+		allocated:       map[string]bool{},
 	}, nil
 }
 
@@ -111,23 +97,34 @@ func run(command string) error {
 func (a *Agent) GetNextIP() (string, error) {
 	_, podNetwork, err := net.ParseCIDR(a.PodCIDR)
 	if err != nil {
-		return "", fmt.Errorf("invalid pod CIDR %q: %w", a.PodCIDR, err)
+		return "", err
 	}
-	maskOnes, maskBits := podNetwork.Mask.Size()
-	allocatedIPsCapacity := 1<<(maskBits-maskOnes) - 2
-	if allocatedIPsCapacity < 0 {
-		allocatedIPsCapacity = 0
-	}
-
-	nextIP := len(a.AllocatedIPs) + 1
-	if nextIP >= allocatedIPsCapacity {
-		return "", fmt.Errorf("Exceeded number of IPs")
+	base := podNetwork.IP.To4()
+	if base == nil {
+		return "", fmt.Errorf("solo IPv4: %s", a.PodCIDR)
 	}
 
-	basicIP := podNetwork.IP.String()
-	ipBytes := []byte(basicIP)
-	ipBytes = ipBytes[:len(ipBytes)-1]
-	podIP := fmt.Sprintf("%s%d", string(ipBytes), nextIP)
-	a.AllocatedIPs = append(a.AllocatedIPs, podIP)
-	return podIP, nil
+	ones, bits := podNetwork.Mask.Size()
+	max := 1<<(bits-ones) - 1 // .255 en un /24
+
+	for offset := 2; offset < max; offset++ {
+		ip := make(net.IP, 4)
+		copy(ip, base)
+		v := binary.BigEndian.Uint32(ip) + uint32(offset)
+		binary.BigEndian.PutUint32(ip, v)
+
+		s := ip.String()
+		if !a.allocated[s] {
+			a.allocated[s] = true
+			return s, nil
+		}
+	}
+	return "", fmt.Errorf("sin IPs libres en %s", a.PodCIDR)
+}
+func (a *Agent) ReleaseIP(releasedIP string) error {
+	if _, ok := a.allocated[releasedIP]; !ok {
+		return fmt.Errorf("Ip already released!")
+	}
+	a.allocated[releasedIP] = false
+	return nil
 }
