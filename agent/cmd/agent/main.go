@@ -34,7 +34,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	node.InitNodeSetup()
+	if err := node.InitNodeSetup(); err != nil {
+		panic(err)
+	}
 
 	//Register to ControlPlane
 	cp := controlplane.NewControlPlane(node, eventJobs)

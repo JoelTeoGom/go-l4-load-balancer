@@ -15,6 +15,9 @@ type Service struct {
 	LocalPods  []*Pod
 	RemoteNode []Backend //NODES that have available pods (THIS service pods)
 
+	//pod IDs already handed out for this service, same idea as Agent.allocated for IPs
+	//a released ID goes back to false so the index can be reused without shifting the others
+	takenIDs map[string]bool
 }
 type Backend struct {
 	ID   string
@@ -31,6 +34,7 @@ func NewService(name, clusterIP, clusterPort, nodePort, podPort string) *Service
 		NodePort:    nodePort,
 		LocalPods:   []*Pod{},
 		RemoteNode:  []Backend{},
+		takenIDs:    map[string]bool{},
 	}
 }
 
@@ -51,18 +55,39 @@ func (s *Service) CreateServiceSetup(name, nodeIP string) {
 	//1. Creating service chain
 
 	serviceName := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, name)
-	args := fmt.Sprintf("iptables -t nat -N %s", serviceName)
-	run(args)
+	run("iptables", "-t", "nat", "-N", serviceName)
 
 	//2. Jumping from KUBE-SERVICES to service chain (ClusterIP and NodePort)
-	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", s.ClusterIP, s.ClusterPort, serviceName)
-	run(args)
+	run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", s.ClusterIP, "-p", "tcp", "--dport", s.ClusterPort, "-j", serviceName)
 
-	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", nodeIP, s.NodePort, serviceName)
-	run(args)
+	run("iptables", "-t", "nat", "-A", "KUBE-SERVICES", "-d", nodeIP, "-p", "tcp", "--dport", s.NodePort, "-j", serviceName)
 
 	//3. Rejecting traffic while service has no pods
-	run(fmt.Sprintf("iptables -t nat -A %s -j REJECT --reject-with icmp-port-unreachable", serviceName))
+	run("iptables", "-t", "nat", "-A", serviceName, "-j", "REJECT", "--reject-with", "icmp-port-unreachable")
+}
+
+// GetNextPodID returns the lowest free pod ID for this service and marks it as taken
+// Scanning a map instead of using len(LocalPods) keeps IDs stable when a pod in the
+// middle is removed, the same reason Agent.GetNextIP scans instead of counting
+func (s *Service) GetNextPodID() (string, error) {
+	// with n IDs known, index n is free at worst, so the scan always terminates
+	for index := 0; index <= len(s.takenIDs); index++ {
+		podID := fmt.Sprintf("%s-%s-%d", KubeServiceChainPrefix, s.Name, index)
+		if !s.takenIDs[podID] {
+			s.takenIDs[podID] = true
+			return podID, nil
+		}
+	}
+	return "", fmt.Errorf("no free pod ID for service %s", s.Name)
+}
+
+// ReleaseID gives a pod ID back so a later pod can reuse the index
+func (s *Service) ReleaseID(releasedID string) error {
+	if !s.takenIDs[releasedID] {
+		return fmt.Errorf("pod ID %s already released", releasedID)
+	}
+	s.takenIDs[releasedID] = false
+	return nil
 }
 
 // Backends returns local pods first and then remote nodes that also serve this service

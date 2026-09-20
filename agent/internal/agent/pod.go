@@ -43,7 +43,6 @@ func NewPod(id, serviceName, ip string) *Pod {
 // TODO(rollback): partial failures leave orphan state behind.
 // The pod is only appended to LocalPods once everything succeeded, so the in-memory
 // state stays clean, but the kernel state does not:
-//   - GetNextIP marks the IP as allocated; no error path calls ReleaseIP.
 //   - SetupPodNetwork may fail halfway, leaving the netns and the veth pair behind.
 //   - SetupPodIptables flushes the service chain first, so a failure after that point
 //     leaves it empty: no REJECT rule and no backends, i.e. the service blackholes.
@@ -54,8 +53,6 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 	if !ok || service == nil {
 		return nil, fmt.Errorf("Service unavailable to create a pod!")
 	}
-	podSlice := service.LocalPods
-
 	podIP, err := a.GetNextIP()
 	if err != nil {
 		return nil, err
@@ -67,10 +64,18 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 		}
 	}()
 
-	podPrefix := len(podSlice)
+	podID, err := service.GetNextPodID()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			service.ReleaseID(podID)
+		}
+	}()
 
 	kubeService := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, serviceName)
-	podID := fmt.Sprintf("%s-%d", kubeService, podPrefix)
 
 	pod = NewPod(podID, serviceName, podIP)
 
@@ -82,23 +87,8 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 		return nil, err
 	}
 	service.LocalPods = append(service.LocalPods, pod)
-	// 3. Cambiar los backends (crear o destruir un pod)
-	// Tres backends, el último en otro nodo:
 
-	// iptables -t nat -F KUBE-SVC-API
-	// iptables -t nat -N KUBE-SEP-API-C
-
-	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.33333 -j KUBE-SEP-API-1
-	// iptables -t nat -A KUBE-SVC-API -m statistic --mode random --probability 0.50000 -j KUBE-SEP-API-2
-	// iptables -t nat -A KUBE-SVC-API -j KUBE-SEP-API-C
-
-	// iptables -t nat -A KUBE-SEP-API-C -p tcp -j DNAT --to-destination 192.168.1.22:30081
-
-	//we give CTRL plane ACTION TO
-	// action :=
-	// event := newEvent(action, )
-	// a.Broadcast()
-	return nil, nil
+	return pod, nil
 }
 
 // SetupPodIptables creates the new pod endpoint chain and rewrites the service chain with a jump to every backend
@@ -106,34 +96,35 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 func (s *Service) SetupPodIptables(kubeService string, pod *Pod) error {
 
 	//1. Flushing service chain, it is rewritten entirely because probabilities change
-	args := fmt.Sprintf("iptables -t nat -F %s", kubeService)
-	if err := run(args); err != nil {
+	if err := run("iptables", "-t", "nat", "-F", kubeService); err != nil {
 		return err
 	}
 
 	//2. Creating Backends
 	backends := s.Backends()
-	backends = append(backends, Backend{IP: pod.IP, Port: s.PodPort})
+	backends = append(backends, Backend{ID: pod.ID, IP: pod.IP, Port: s.PodPort})
 	backendCount := len(backends)
 	//3. Creating new pod endpoint chain with its DNAT to the pod
-	args = fmt.Sprintf("iptables -t nat -N %s", pod.ID)
-	if err := run(args); err != nil {
+	if err := run("iptables", "-t", "nat", "-N", pod.ID); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("iptables -t nat -A %s -p tcp -j DNAT --to-destination %s:%s", pod.ID, pod.IP, s.PodPort)
-	if err := run(args); err != nil {
+	if err := run("iptables", "-t", "nat", "-A", pod.ID, "-p", "tcp", "-j", "DNAT",
+		"--to-destination", fmt.Sprintf("%s:%s", pod.IP, s.PodPort)); err != nil {
 		return err
 	}
 
 	//4. Jumping from service chain to every backend
 	for backendIndex, backend := range backends {
+		var err error
 		if backendIndex == backendCount-1 {
-			args = fmt.Sprintf("iptables -t nat -A %s -p tcp -j %s", kubeService, backend.ID)
+			err = run("iptables", "-t", "nat", "-A", kubeService, "-p", "tcp", "-j", backend.ID)
 		} else {
 			probability := 1.0 / float64(backendCount-backendIndex)
-			args = fmt.Sprintf("iptables -t nat -A %s -p tcp -m statistic --mode random --probability %.5f -j %s", kubeService, probability, backend.ID)
+			err = run("iptables", "-t", "nat", "-A", kubeService, "-p", "tcp",
+				"-m", "statistic", "--mode", "random",
+				"--probability", fmt.Sprintf("%.5f", probability), "-j", backend.ID)
 		}
-		if err := run(args); err != nil {
+		if err != nil {
 			return err
 		}
 	}
@@ -153,52 +144,43 @@ func (a *Agent) SetupPodNetwork(pod *Pod) error {
 	vethHost, vethPod := vethNames(pod.ID)
 
 	//2. Creating pod network namespace (same name as pod ID)
-	args := fmt.Sprintf("ip netns add %s", pod.NetNS)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "add", pod.NetNS); err != nil {
 		return err
 	}
 
 	//3. Creating veth pair (one cable, two ends)
-	args = fmt.Sprintf("ip link add %s type veth peer name %s", vethHost, vethPod)
-	if err := run(args); err != nil {
+	if err := run("ip", "link", "add", vethHost, "type", "veth", "peer", "name", vethPod); err != nil {
 		return err
 	}
 
 	//4. Moving pod end into the netns and renaming it to eth0
-	args = fmt.Sprintf("ip link set %s netns %s", vethPod, pod.NetNS)
-	if err := run(args); err != nil {
+	if err := run("ip", "link", "set", vethPod, "netns", pod.NetNS); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("ip netns exec %s ip link set %s name eth0", pod.NetNS, vethPod)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "exec", pod.NetNS, "ip", "link", "set", vethPod, "name", "eth0"); err != nil {
 		return err
 	}
 
 	//5-6. Plugging host end into the bridge
-	args = fmt.Sprintf("ip link set %s master %s", vethHost, a.Bridge.Name)
-	if err := run(args); err != nil {
+	if err := run("ip", "link", "set", vethHost, "master", a.Bridge.Name); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("ip link set %s up", vethHost)
-	if err := run(args); err != nil {
+	if err := run("ip", "link", "set", vethHost, "up"); err != nil {
 		return err
 	}
 
 	//7. Configuring network inside the netns
-	args = fmt.Sprintf("ip netns exec %s ip addr add %s/%d dev eth0", pod.NetNS, pod.IP, maskOnes)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "exec", pod.NetNS, "ip", "addr", "add",
+		fmt.Sprintf("%s/%d", pod.IP, maskOnes), "dev", "eth0"); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("ip netns exec %s ip link set eth0 up", pod.NetNS)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "exec", pod.NetNS, "ip", "link", "set", "eth0", "up"); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("ip netns exec %s ip link set lo up", pod.NetNS)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "exec", pod.NetNS, "ip", "link", "set", "lo", "up"); err != nil {
 		return err
 	}
-	args = fmt.Sprintf("ip netns exec %s ip route add default via %s", pod.NetNS, gatewayIP)
-	if err := run(args); err != nil {
+	if err := run("ip", "netns", "exec", pod.NetNS, "ip", "route", "add", "default", "via", gatewayIP); err != nil {
 		return err
 	}
 
@@ -215,6 +197,10 @@ func vethNames(podID string) (string, string) {
 	return "veth" + podHash, "eth0" + podHash
 }
 
+// TODO(removepod): tearing a pod down must give its resources back, otherwise they
+// leak exactly like a failed create would: ReleaseIP for the pod IP, ReleaseID on the
+// service for the pod ID, delete the netns and the veth, drop its KUBE-SEP chain and
+// rewrite the service chain so the probabilities match the remaining backends
 func (n *Agent) RemovePod(pod *Pod) (*Pod, error) {
 	//ENVIAR UN SIGTERM I LUEGO SIGKILL I MATAMOS EL PROCESO
 	return nil, nil

@@ -44,51 +44,98 @@ func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL st
 
 func (a *Agent) InitNodeSetup() error {
 	//1. Loading br_netfilter so bridged traffic goes through iptables
-	if err := run("modprobe br_netfilter"); err != nil {
+	if err := run("modprobe", "br_netfilter"); err != nil {
 		return err
 	}
 
 	//2. Enabling IP forwarding and iptables on bridge
-	if err := run("sysctl -w net.ipv4.ip_forward=1"); err != nil {
+	if err := run("sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
 		return err
 	}
-	if err := run("sysctl -w net.bridge.bridge-nf-call-iptables=1"); err != nil {
+	if err := run("sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"); err != nil {
 		return err
 	}
 
 	//3. Setting up bridge
-	args := fmt.Sprintf("ip link add name %s type bridge", a.Bridge.Name)
-	run(args)
-	args = fmt.Sprintf("ip addr add %s dev %s", a.Bridge.GatewayIP, a.Bridge.Name)
-	run(args)
-	args = fmt.Sprintf("ip link set %s up", a.Bridge.Name)
-	run(args)
+	if err := runIgnoreExists("ip", "link", "add", "name", a.Bridge.Name, "type", "bridge"); err != nil {
+		return err
+	}
+	if err := runIgnoreExists("ip", "addr", "add", a.Bridge.GatewayIP, "dev", a.Bridge.Name); err != nil {
+		return err
+	}
+	if err := run("ip", "link", "set", a.Bridge.Name, "up"); err != nil {
+		return err
+	}
 
 	//4. Creating KUBE chains
-	run("iptables -t nat -N KUBE-SERVICES")
-	run("iptables -t nat -N KUBE-POSTROUTING")
-	run("iptables -t filter -N KUBE-FORWARD")
+	if err := runIgnoreExists("iptables", "-t", "nat", "-N", "KUBE-SERVICES"); err != nil {
+		return err
+	}
+	if err := runIgnoreExists("iptables", "-t", "nat", "-N", "KUBE-POSTROUTING"); err != nil {
+		return err
+	}
+	if err := runIgnoreExists("iptables", "-t", "filter", "-N", "KUBE-FORWARD"); err != nil {
+		return err
+	}
 
 	//5. Jumping from built-in chains to KUBE chains
-	run("iptables -t nat -I PREROUTING 1 -j KUBE-SERVICES")
-	run("iptables -t nat -I OUTPUT 1 -j KUBE-SERVICES")
-	run("iptables -t nat -I POSTROUTING 1 -j KUBE-POSTROUTING")
-	run("iptables -t filter -I FORWARD 1 -j KUBE-FORWARD")
+	if err := ensureJump("nat", "PREROUTING", "KUBE-SERVICES"); err != nil {
+		return err
+	}
+	if err := ensureJump("nat", "OUTPUT", "KUBE-SERVICES"); err != nil {
+		return err
+	}
+	if err := ensureJump("nat", "POSTROUTING", "KUBE-POSTROUTING"); err != nil {
+		return err
+	}
+	if err := ensureJump("filter", "FORWARD", "KUBE-FORWARD"); err != nil {
+		return err
+	}
 
 	//6. Masquerading pod traffic leaving the pod CIDR
-	args = fmt.Sprintf("iptables -t nat -A KUBE-POSTROUTING -s %s ! -d %s -j MASQUERADE", a.PodCIDR, a.PodCIDR)
-	run(args)
+	// KUBE-POSTROUTING is written by us only, so flushing it first keeps the rule
+	// from stacking on restart and drops rules left over from an older PodCIDR
+	if err := run("iptables", "-t", "nat", "-F", "KUBE-POSTROUTING"); err != nil {
+		return err
+	}
+	if err := run("iptables", "-t", "nat", "-A", "KUBE-POSTROUTING", "-s", a.PodCIDR, "!", "-d", a.PodCIDR, "-j", "MASQUERADE"); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func run(command string) error {
-	args := strings.Fields(command)
-	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+func run(name string, args ...string) error {
+	out, err := exec.Command(name, args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s: %w: %s", command, err, out)
+		return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, out)
 	}
 	return nil
+}
+
+// ensureJump inserts a jump into a built-in chain only when it is not there yet,
+// because -I always inserts and would stack one more copy on every restart
+func ensureJump(table, builtinChain, kubeChain string) error {
+	// iptables -C exits 0 when the rule already exists
+	if err := run("iptables", "-t", table, "-C", builtinChain, "-j", kubeChain); err == nil {
+		return nil
+	}
+	return run("iptables", "-t", table, "-I", builtinChain, "1", "-j", kubeChain)
+}
+
+// runIgnoreExists runs a create command and swallows only the "already there" error,
+// so restarting the agent on an already initialised node is not treated as a failure
+func runIgnoreExists(name string, args ...string) error {
+	err := run(name, args...)
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	// iptables -N: "Chain already exists"; ip link/addr add: "RTNETLINK answers: File exists"
+	if strings.Contains(message, "already exists") || strings.Contains(message, "File exists") {
+		return nil
+	}
+	return err
 }
 
 // helper we use to return IPs inside a NODE private net
