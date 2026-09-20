@@ -117,7 +117,33 @@ func (cp *ControlPlane) CreateServiceHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (cp *ControlPlane) CreatePodHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
+	defer r.Body.Close() // Close the request body to avoid resource leaks
+
+	event := Event{
+		ID:      time.Now().String(),
+		action:  ActionCreatePod,
+		Payload: "datAAAAAA",
+	}
+
+	//try to push if we dont have space we discard until next (we also use queue to rate limit)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		http.Error(w, "Too many request", http.StatusTooManyRequests)
+		return
+	case cp.EventQueue <- event:
+	}
+
+	//202 becasue async processing
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("Node unregistered successfully"))
 }
 
 func (cp *ControlPlane) WatchNodeHandler(w http.ResponseWriter, r *http.Request) {

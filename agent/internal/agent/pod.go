@@ -129,24 +129,6 @@ func (s *Service) SetupPodIptables(kubeService string, pod *Pod) error {
 	return nil
 }
 
-// Backends returns local pods first and then remote nodes that also serve this service
-func (s *Service) Backends() []Backend {
-	var backends []Backend
-	for _, pod := range s.LocalPods {
-		backends = append(backends, Backend{ID: pod.ID, IP: pod.IP, Port: s.PodPort})
-	}
-	for _, externalBackend := range s.RemoteNode {
-		backends = append(backends, externalBackend)
-	}
-	return backends
-}
-
-type Backend struct {
-	ID   string
-	IP   string
-	Port string
-}
-
 // SetupPodNetwork creates the pod netns, wires it to the node bridge with a veth pair and configures IP + default route
 func (a *Agent) SetupPodNetwork(pod *Pod) error {
 	_, podNetwork, err := net.ParseCIDR(a.PodCIDR)

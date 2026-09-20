@@ -16,6 +16,11 @@ type Service struct {
 	RemoteNode []Backend //NODES that have available pods (THIS service pods)
 
 }
+type Backend struct {
+	ID   string
+	IP   string
+	Port string
+}
 
 func NewService(name, clusterIP, clusterPort, nodePort, podPort string) *Service {
 	return &Service{
@@ -37,24 +42,39 @@ func (n *Agent) CreateService(name, clusterIP, clusterPort, nodePort, podPort st
 	newService := NewService(name, clusterIP, clusterPort, nodePort, podPort)
 	n.Services[name] = newService
 
-	newService.CreateServiceSetup()
+	newService.CreateServiceSetup(name)
 
 	return newService, nil
 }
 
-func (n *Service) CreateServiceSetup() {
+func (s *Service) CreateServiceSetup(name string) {
 	//1. Creating service chain
-	run("iptables -t nat -N KUBE-SVC-API")
 
-	//2. Jumping from KUBE-SERVICES to service chain (ClusterIP and NodePort)
-	args := fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j KUBE-SVC-API", n.ClusterIP, n.ClusterPort)
+	serviceName := fmt.Sprintf("%s-%s", KubeServiceChainPrefix, name)
+	args := fmt.Sprintf("iptables -t nat -N %s", serviceName)
 	run(args)
 
-	for _, remoteNodeIP := range n.RemoteNode {
-		args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j KUBE-SVC-API", remoteNodeIP, n.NodePort)
+	//2. Jumping from KUBE-SERVICES to service chain (ClusterIP and NodePort)
+	args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", s.ClusterIP, s.ClusterPort)
+	run(args)
+
+	for _, backend := range s.RemoteNode {
+		args = fmt.Sprintf("iptables -t nat -A KUBE-SERVICES -d %s -p tcp --dport %s -j %s", backend.IP, s.NodePort)
 		run(args)
 	}
 
 	//3. Rejecting traffic while service has no pods
 	run("iptables -t nat -A KUBE-SVC-API -j REJECT --reject-with icmp-port-unreachable")
+}
+
+// Backends returns local pods first and then remote nodes that also serve this service
+func (s *Service) Backends() []Backend {
+	var backends []Backend
+	for _, pod := range s.LocalPods {
+		backends = append(backends, Backend{ID: pod.ID, IP: pod.IP, Port: s.PodPort})
+	}
+	for _, externalBackend := range s.RemoteNode {
+		backends = append(backends, externalBackend)
+	}
+	return backends
 }
