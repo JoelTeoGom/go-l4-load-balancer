@@ -1,10 +1,10 @@
 # orchard
 
-> A toy Kubernetes: a hand-written L4 load balancer with its own control plane, node
-> agents, and pods in their own network namespaces. All in Go, from scratch.
+> A toy Kubernetes, written by hand in Go: a control plane, node agents that build pod
+> network namespaces and program iptables, and an L4 load balancer in front of it all.
 
-**Status:** work in progress. This is a learning project, not something to run anywhere
-that matters.
+**Status:** work in progress, and a learning project. Not something to run anywhere that
+matters. See [Scope and honest limits](#scope-and-honest-limits).
 
 ---
 
@@ -12,118 +12,104 @@ that matters.
 
 A miniature orchestrator, built by hand to understand how the real ones work. Nothing here
 wraps an existing tool: the load balancer moves the bytes itself, the agent creates the
-network namespaces itself, and the two talk over a protocol of their own.
+network namespaces itself, writes its own iptables rules, and the two talk over a protocol
+of their own.
 
-There are two components, developed as if they were separate repositories, kept in one for
+It started as an L4 load balancer. It grew. What the agent does today is, in Kubernetes
+terms, **kubelet + kube-proxy**: pod lifecycle, IP allocation, veth pairs, a node bridge,
+and a set of `KUBE-*` iptables chains that DNAT a virtual service address to a real pod.
+The L4 load balancer survives as the component in front, the equivalent of a cloud
+LoadBalancer sitting ahead of a cluster's NodePorts.
+
+Two components, developed as if they were separate repositories, kept in one for
 convenience:
 
-- **`lb/`** — the load balancer. A data plane that forwards TCP connections, and a control
-  plane that keeps track of which nodes exist and how they are doing.
-- **`agent/`** — the node agent. Runs on every node, registers itself with the control
-  plane, reports state, and creates and supervises pods locally.
-
-Deliberately not implemented: services, cluster IPs, DNS, cross-node pod networking,
-scheduling constraints, readiness/liveness/startup probes, declarative manifests. The
-point is the data path and the control loop, not feature parity.
+- **`lb/`** — the control plane and the L4 data plane. Tracks which nodes exist and how
+  they are doing, dispatches events to agents, and forwards client TCP connections to a
+  node.
+- **`agent/`** — the node agent. Registers with the control plane, then creates services
+  and pods locally: namespaces, veth pairs, IP allocation and iptables rules.
 
 ---
 
-## Architecture
+## How a packet gets to a pod
 
-```mermaid
-flowchart TB
-    client([Client])
-
-    subgraph LB["Load balancer node"]
-        direction TB
-        dp["Data plane<br/>:8080"]
-        cp["Control plane<br/>:9000"]
-    end
-
-    subgraph N1["node-1"]
-        direction TB
-        a1["agent"]
-        p1["pod 10.244.0.2"]
-        p2["pod 10.244.0.3"]
-    end
-
-    subgraph N2["node-2"]
-        direction TB
-        a2["agent"]
-        p3["pod 10.244.0.2"]
-        p4["pod 10.244.0.3"]
-    end
-
-    subgraph N3["node-3"]
-        direction TB
-        a3["agent"]
-        p5["pod 10.244.0.2"]
-        p6["pod 10.244.0.3"]
-    end
-
-    client --> dp
-
-    dp --> a1
-    dp --> a2
-    dp --> a3
-
-    a1 --> p1
-    a1 --> p2
-    a2 --> p3
-    a2 --> p4
-    a3 --> p5
-    a3 --> p6
-
-    a1 -.-> cp
-    a2 -.-> cp
-    a3 -.-> cp
-```
-
-Solid lines carry traffic. Dashed lines carry state: registration, heartbeats, and the
-node's own view of its health.
+The interesting part of the project, and the reason it exists.
 
 ```
-                         ┌──────────────────────────┐
-        client ─────────▶│  :8080   data plane      │
-                         │  :9000   control plane   │◀ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-                         └───────────┬──────────────┘                  ┆
-                                     │                                 ┆
-                 ┌───────────────────┼───────────────────┐             ┆
-                 ▼                   ▼                   ▼             ┆
-           ┌───────────┐       ┌───────────┐       ┌───────────┐       ┆
-           │  node-1   │       │  node-2   │       │  node-3   │       ┆
-           │  agent  ──┼───────┼── agent ──┼───────┼── agent ──┼─ ─ ─ ─┘
-           │  ┌─────┐  │       │  ┌─────┐  │       │  ┌─────┐  │
-           │  │ pod │  │       │  │ pod │  │       │  │ pod │  │
-           │  ├─────┤  │       │  ├─────┤  │       │  ├─────┤  │
-           │  │ pod │  │       │  │ pod │  │       │  │ pod │  │
-           │  └─────┘  │       │  └─────┘  │       │  └─────┘  │
-           └───────────┘       └───────────┘       └───────────┘
+client ──▶ lb data plane ──▶ nodeIP:NodePort
+                                   │
+                            PREROUTING
+                                   │
+                            KUBE-SERVICES          -d clusterIP --dport → service chain
+                                   │               -d nodeIP   --dport → service chain
+                                   ▼
+                            KUBE-SVC-<service>     -m statistic --probability 1/n
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+            KUBE-SEP-<svc>-0   ...-1      (remote node backend)
+                    │
+              DNAT podIP:podPort
+                    │
+                    ▼
+              br0 ──▶ veth ──▶ pod netns eth0
 ```
+
+Each pod lives in its own network namespace, joined to a node bridge by a veth pair, with
+an address from the node's pod CIDR and a default route through the bridge. Each pod gets
+an endpoint chain (`KUBE-SEP-*`) whose only job is the DNAT to that pod. The service chain
+(`KUBE-SVC-*`) holds the load balancing itself: one `-m statistic` rule per backend with
+probability `1/n`, `1/(n-1)`, …, and the last one unconditional.
+
+Which means the actual packet-by-packet balancing inside a node is done by **the kernel**.
+The agent's job is to compute the probabilities and keep the rules correct as pods come and
+go. That is a control plane, not a data plane — the same split as the real thing.
 
 ### Balancing happens twice
 
-The load balancer picks a **node**. The agent on that node picks a **pod**. Two
-independent decisions, each with its own affinity: once a connection is assigned, every
-byte of it follows the same path until it closes.
-
-This mirrors how a real cluster works — an external load balancer spreads traffic across
-nodes, and kube-proxy spreads it across pods inside each one.
+The load balancer picks a **node**. That node's iptables rules pick a **pod**. Two
+independent decisions. This mirrors a real cluster: an external load balancer spreads
+traffic across nodes, and kube-proxy spreads it across pods inside each one.
 
 ### Two listeners, never one
 
 The data plane and the control plane listen on different ports, and the distinction is
-absolute: anything arriving on `:8080` is a client, anything arriving on `:9000` is an
-agent. The kernel demultiplexes by destination port for free, so the balancer never has to
-inspect a payload to work out who is talking to it — which would break protocol-agnosticism
-and deadlock against any protocol where the server speaks first.
+absolute: anything arriving on `:8080` is a client, anything on `:9000` is an agent. The
+kernel demultiplexes by destination port for free, so the balancer never has to inspect a
+payload to work out who is talking to it — which would break protocol-agnosticism and
+deadlock against any protocol where the server speaks first.
 
 ### Pod addresses repeat across nodes
 
-Every node hands out the same small range of pod IPs. They live inside per-node network
-namespaces and never leave the node, so there is no conflict and no address coordination
-to do. Kubernetes allocates a distinct range per node because it needs pod-to-pod traffic
-across nodes; this project does not, and gets to skip the problem.
+Every node hands out addresses from the same pod CIDR. Those addresses never leave their
+node: a pod on another node is reached as `nodeIP:NodePort`, never by its pod IP. So there
+is no conflict and no address coordination to do. Kubernetes allocates a distinct range per
+node because it needs real pod-to-pod routing across nodes; this project does not, and gets
+to skip the problem.
+
+---
+
+## Scope and honest limits
+
+This is a toy. It is meant to teach me Linux networking and how Kubernetes is put together,
+and it is written by hand on purpose. Which means:
+
+- **Linux only, and root only.** Network namespaces, veth pairs, bridges and iptables are
+  Linux. The agent needs root or `CAP_NET_ADMIN`. The load balancer runs anywhere.
+- **Virtual machines, not containers.** A "pod" here is a network namespace with a process
+  in it. There is no image, no filesystem isolation, no cgroups.
+- **The CRI and the CNI are hardcoded.** Kubernetes has pluggable interfaces precisely so
+  that Docker, containerd, Calico or Cilium can each do this differently. Here there is one
+  way of creating a namespace and one way of writing an iptables rule, both baked into the
+  agent. That is the opposite of what a real orchestrator does, and it is deliberate: the
+  point is to write the thing an interface would normally hide.
+- **iptables rules are written directly**, by shelling out to `iptables` and `ip`. Real
+  implementations use netlink. Running this alongside Docker on the same host is asking for
+  trouble, because Docker has its own opinions about the same chains.
+- **No declarative state yet.** The control plane dispatches imperative events. There is no
+  desired state to reconcile against, which is the single biggest thing separating this
+  from an orchestrator. It is on the roadmap.
 
 ---
 
@@ -131,9 +117,10 @@ across nodes; this project does not, and gets to skip the problem.
 
 ```
 orchard/
-├── lb/       — load balancer: data plane, control plane, node registry
-├── agent/    — node agent: registration, heartbeats, pod lifecycle, local forwarding
-└── docs/     — notes and design write-ups
+├── lb/        — control plane, L4 data plane, node registry
+├── agent/     — node agent: registration, IPAM, pod netns + veth, iptables rules
+├── docs/      — notes and design write-ups
+└── TODO.md    — roadmap and open questions
 ```
 
 ---
@@ -147,6 +134,11 @@ Each piece runs on its own machine, all on the same LAN. A home router is enough
 - Go 1.25 or newer on every machine.
 - Linux on every node that runs an agent. Pods live in network namespaces, which only
   exist on Linux, and the agent needs root (or `CAP_NET_ADMIN`) to create them.
+- `iptables` and `iproute2` on every node, plus a kernel with the `br_netfilter` module.
+  The agent loads it and sets `net.bridge.bridge-nf-call-iptables=1`, so that traffic
+  crossing the node bridge is seen by iptables at all.
+- **A node with Docker installed needs care.** Docker sets the `FORWARD` policy to `DROP`
+  and manages its own chains in the same tables. Use a clean VM.
 - The load balancer itself runs on any OS.
 
 ### 1. Give the load balancer a fixed IP
