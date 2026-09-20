@@ -24,7 +24,7 @@ func NewRegistry() *Registry {
 	}
 }
 
-func (r *Registry) GetNoteByAddress(address string) *Node {
+func (r *Registry) GetNodeByAddress(address string) *Node {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, node := range r.nodes {

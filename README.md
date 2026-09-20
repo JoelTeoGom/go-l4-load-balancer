@@ -24,7 +24,7 @@ LoadBalancer sitting ahead of a cluster's NodePorts.
 Two components, developed as if they were separate repositories, kept in one for
 convenience:
 
-- **`lb/`** — the control plane and the L4 data plane. Tracks which nodes exist and how
+- **`orchestrator/`** — the API server and the L4 load balancer. Tracks which nodes exist and how
   they are doing, dispatches events to agents, and forwards client TCP connections to a
   node.
 - **`agent/`** — the node agent. Registers with the control plane, then creates services
@@ -117,10 +117,10 @@ and it is written by hand on purpose. Which means:
 
 ```
 orchard/
-├── lb/        — control plane, L4 data plane, node registry
-├── agent/     — node agent: registration, IPAM, pod netns + veth, iptables rules
-├── docs/      — notes and design write-ups
-└── TODO.md    — roadmap and open questions
+├── orchestrator/  — API server, node registry, L4 load balancer
+├── agent/         — node agent: registration, IPAM, pod netns + veth, iptables rules
+├── docs/          — notes and design write-ups
+└── TODO.md        — roadmap and open questions
 ```
 
 ---
@@ -172,7 +172,7 @@ Nodes don't need a reservation: they find the load balancer, not the other way r
 ### 2. Bind to an address other machines can reach
 
 The addresses the control plane and data plane listen on (in
-[`lb/loadBalancer/lb.go`](lb/loadBalancer/lb.go)) must be reachable from the rest of the
+[`orchestrator/internal/config/config.go`](orchestrator/internal/config/config.go)) must be reachable from the rest of the
 LAN: either the reserved IP (`<LB_ADDRESS>:9000`) or all interfaces (`:9000`, `:8080`).
 Never `localhost` or `127.0.0.1`, which only accept connections from the same machine.
 Binding to all interfaces saves you from keeping the code and the router in sync.
@@ -192,7 +192,7 @@ Put the reserved IP in `.env.local` (git-ignored) and start the load balancer:
 ```sh
 cp .env.example .env.local   # then set LB_ADDRESS
 set -a; source .env.local; set +a
-cd lb && go run ./cmd/lb
+cd orchestrator && go run ./cmd/orchestrator
 ```
 
 Then, from any other machine on the LAN:

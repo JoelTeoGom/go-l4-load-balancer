@@ -1,4 +1,4 @@
-package controlplane
+package apiclient
 
 type RegisterPodRequest struct {
 	NodeID      string `json:"nodeId"`

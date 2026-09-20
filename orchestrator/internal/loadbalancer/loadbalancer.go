@@ -1,24 +1,24 @@
-package dataplane
+package loadbalancer
 
 import (
 	"context"
 	"fmt"
 	"net"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
+	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
 )
 
-type DataPlane struct {
+type LoadBalancer struct {
 	registry *registry.Registry
 }
 
-func NewDataPlane(registry *registry.Registry) *DataPlane {
-	return &DataPlane{
+func NewLoadBalancer(registry *registry.Registry) *LoadBalancer {
+	return &LoadBalancer{
 		registry: registry,
 	}
 }
 
-func (dp *DataPlane) StartDataplane(ctx context.Context, address string) error {
+func (dp *LoadBalancer) StartLoadBalancer(ctx context.Context, address string) error {
 	address = fmt.Sprintf("%s:8080", address)
 	fmt.Println("Listening Data plane: ", address)
 	ln, err := net.Listen("tcp", address)
@@ -38,7 +38,7 @@ func (dp *DataPlane) StartDataplane(ctx context.Context, address string) error {
 	}
 }
 
-func (dp *DataPlane) handleConnection(ctx context.Context, conn net.Conn) {
+func (dp *LoadBalancer) handleConnection(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	node := dp.registry.ObtainRandomNode()
 	if node == nil {

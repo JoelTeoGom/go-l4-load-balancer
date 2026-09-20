@@ -119,7 +119,7 @@ orden. Eso es un orquestador imperativo. Lo que falta para que sea declarativo:
 
 ## Data plane
 
-- [ ] Queda por programar buena parte del data plane del `lb/`
+- [ ] Queda por programar buena parte del balanceador L4 (`orchestrator/internal/loadbalancer`)
 
 ## Networking general
 

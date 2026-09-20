@@ -1,4 +1,4 @@
-package controlplane
+package apiserver
 
 type Event struct {
 	ID      string

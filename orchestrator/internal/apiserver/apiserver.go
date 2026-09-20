@@ -1,26 +1,26 @@
-package controlplane
+package apiserver
 
 import (
 	"context"
 	"fmt"
 	"net/http"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
+	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
 )
 
-type ControlPlane struct {
+type APIServer struct {
 	Registry   *registry.Registry
 	EventQueue chan Event
 }
 
-func NewControlPlane(registry *registry.Registry) *ControlPlane {
-	return &ControlPlane{
+func NewAPIServer(registry *registry.Registry) *APIServer {
+	return &APIServer{
 		Registry:   registry,
 		EventQueue: make(chan Event, 100),
 	}
 }
 
-func (cp *ControlPlane) StartControlPlane(ctx context.Context, address string) error {
+func (cp *APIServer) StartAPIServer(ctx context.Context, address string) error {
 	http.HandleFunc("/register-node", cp.registerNodeHandler)
 	http.HandleFunc("/unregister-node", cp.unregisterNodeHandler)
 	http.HandleFunc("/list-nodes", cp.listNodesHandler)

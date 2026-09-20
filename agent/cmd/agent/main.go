@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
+	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/apiclient"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/config"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/controlplane"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/network"
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/reconcile"
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	//Register to ControlPlane
-	cp := controlplane.NewControlPlane(node, eventJobs)
+	cp := apiclient.NewAPIClient(node, eventJobs)
 	err = cp.RegisterNode(ctx)
 	if err != nil {
 		panic(err)

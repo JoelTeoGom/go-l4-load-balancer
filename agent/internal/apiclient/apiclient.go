@@ -1,4 +1,4 @@
-package controlplane
+package apiclient
 
 import (
 	"bufio"
@@ -16,8 +16,8 @@ import (
 	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
 )
 
-// ControlPlane is the HTTP client the agent uses to talk to the load balancer's control plane.
-type ControlPlane struct {
+// APIClient is the HTTP client the agent uses to talk to the orchestrator's API server.
+type APIClient struct {
 	Client       *http.Client
 	StreamClient StreamClient
 	Node         *agent.Agent
@@ -33,8 +33,8 @@ type StreamClient struct {
 	lastID      string
 }
 
-func NewControlPlane(node *agent.Agent, eventQueue chan<- event.Event) *ControlPlane {
-	return &ControlPlane{
+func NewAPIClient(node *agent.Agent, eventQueue chan<- event.Event) *APIClient {
+	return &APIClient{
 		EventQueue: eventQueue,
 		Node:       node,
 		Client: &http.Client{
@@ -60,15 +60,15 @@ func NewControlPlane(node *agent.Agent, eventQueue chan<- event.Event) *ControlP
 	}
 }
 
-func (cp *ControlPlane) RegisterNode(ctx context.Context) error {
+func (cp *APIClient) RegisterNode(ctx context.Context) error {
 	return cp.post(ctx, "/register-node", cp.Node.NodeID)
 }
 
-func (cp *ControlPlane) UnregisterNode(ctx context.Context) error {
+func (cp *APIClient) UnregisterNode(ctx context.Context) error {
 	return cp.post(ctx, "/unregister-node", cp.Node.NodeID)
 }
 
-func (cp *ControlPlane) RegisterPod(ctx context.Context, serviceName string) error {
+func (cp *APIClient) RegisterPod(ctx context.Context, serviceName string) error {
 	return cp.post(ctx, "/register-pod", RegisterPodRequest{
 		NodeID:      cp.Node.NodeID,
 		NodeIP:      cp.Node.NodeIP,
@@ -76,7 +76,7 @@ func (cp *ControlPlane) RegisterPod(ctx context.Context, serviceName string) err
 	})
 }
 
-func (cp *ControlPlane) post(ctx context.Context, path string, payload any) error {
+func (cp *APIClient) post(ctx context.Context, path string, payload any) error {
 	requestBody, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
@@ -106,7 +106,7 @@ func (cp *ControlPlane) post(ctx context.Context, path string, payload any) erro
 	return nil
 }
 
-func (cp *ControlPlane) Watch(ctx context.Context) error {
+func (cp *APIClient) Watch(ctx context.Context) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 

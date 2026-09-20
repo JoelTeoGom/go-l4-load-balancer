@@ -1,4 +1,4 @@
-package controlplane
+package apiserver
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/lb/internal/registry"
+	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
 )
 
-func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) registerNodeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -35,7 +35,7 @@ func (cp *ControlPlane) registerNodeHandler(w http.ResponseWriter, r *http.Reque
 	w.Write([]byte("Node registered successfully"))
 }
 
-func (cp *ControlPlane) unregisterNodeHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) unregisterNodeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -50,7 +50,7 @@ func (cp *ControlPlane) unregisterNodeHandler(w http.ResponseWriter, r *http.Req
 	w.Write([]byte("Node unregistered successfully"))
 }
 
-func (cp *ControlPlane) listNodesHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) listNodesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -62,7 +62,7 @@ func (cp *ControlPlane) listNodesHandler(w http.ResponseWriter, r *http.Request)
 	//w.Write([]byte(fmt.Sprintf("List of nodes: %v", nodes)))
 }
 
-func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -73,7 +73,7 @@ func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid remote address", http.StatusBadRequest)
 		return
 	}
-	node := cp.Registry.GetNoteByAddress(host)
+	node := cp.Registry.GetNodeByAddress(host)
 	if node == nil {
 		http.Error(w, "Node not found", http.StatusNotFound)
 		return
@@ -85,7 +85,7 @@ func (cp *ControlPlane) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Control plane is healthy"))
 }
 
-func (cp *ControlPlane) CreateServiceHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) CreateServiceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -116,7 +116,7 @@ func (cp *ControlPlane) CreateServiceHandler(w http.ResponseWriter, r *http.Requ
 
 }
 
-func (cp *ControlPlane) CreatePodHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) CreatePodHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -148,7 +148,7 @@ func (cp *ControlPlane) CreatePodHandler(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte("Node unregistered successfully"))
 }
 
-func (cp *ControlPlane) WatchNodeHandler(w http.ResponseWriter, r *http.Request) {
+func (cp *APIServer) WatchNodeHandler(w http.ResponseWriter, r *http.Request) {
 
 	//TODO I WANT TO CREATE A STORE DB TO STORE KEY VALUE EVENTS ORDERED AND USE KEY TO KNOW WHICHS EVENT TO PROCESS
 	//lastEventID, err := strconv.Atoi(r.Header.Get("Last-Event-ID")) // sent by the browser when it reconnects
