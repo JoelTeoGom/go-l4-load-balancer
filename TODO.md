@@ -42,7 +42,7 @@
 
 ## Refactor / naming
 - [ ] Renombrar `lb` / "load balancer" / "control plane" a orquestador (o similar) — en realidad es un mini Kubernetes
-- [ ] El nombre del repo (`go-l4-load-balancer`) ya no dice lo que hay dentro
+- [x] Repo renombrado a `kubernetes-from-scratch`; module paths actualizados
 - [x] README actualizado: el datapath de iptables, y la sección de alcance y limitaciones
       (Linux only, VMs en vez de contenedores, CRI/CNI hardcodeados, sin estado declarativo)
 

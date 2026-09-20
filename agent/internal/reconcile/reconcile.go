@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/agent"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/event"
 )
 
 func StartReconciler(ctx context.Context, node *agent.Agent, jobQueue <-chan event.Event) error {

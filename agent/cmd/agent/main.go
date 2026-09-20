@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/apiclient"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/config"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/network"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/reconcile"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/agent"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/apiclient"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/config"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/event"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/network"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/reconcile"
 )
 
 func main() {

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/agent"
-	"github.com/JoelTeoGom/go-l4-load-balancer/agent/internal/event"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/agent"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/event"
 )
 
 // APIClient is the HTTP client the agent uses to talk to the orchestrator's API server.

@@ -1,3 +1,3 @@
-module github.com/JoelTeoGom/go-l4-load-balancer/agent
+module github.com/JoelTeoGom/kubernetes-from-scratch/agent
 
 go 1.25.3

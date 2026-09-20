@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/registry"
 )
 
 func (cp *APIServer) registerNodeHandler(w http.ResponseWriter, r *http.Request) {

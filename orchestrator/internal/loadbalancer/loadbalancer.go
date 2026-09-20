@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/registry"
 )
 
 type LoadBalancer struct {

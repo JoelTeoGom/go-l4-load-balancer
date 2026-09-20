@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/apiserver"
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/config"
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/loadbalancer"
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/metrics"
-	"github.com/JoelTeoGom/go-l4-load-balancer/orchestrator/internal/registry"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/apiserver"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/config"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/loadbalancer"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/metrics"
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/registry"
 )
 
 func main() {
