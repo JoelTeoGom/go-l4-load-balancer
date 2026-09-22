@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/consensys/gnark-crypto/field/goff/cmd"
@@ -15,6 +18,7 @@ const (
 	// endpoint chain per pod, so iptables -S tells them apart at a glance
 	KubeServiceChainPrefix  = "KUBE-SVC"
 	KubeEndpointChainPrefix = "KUBE-SEP"
+	PodGraceTime            = 10 * time.Second
 )
 
 type Pod struct {
@@ -29,7 +33,8 @@ type Pod struct {
 }
 
 type Process struct {
-	PID string
+	PID     string
+	Process *os.Process
 }
 
 type Status string
@@ -237,4 +242,29 @@ func (n *Agent) RemovePod(pod *Pod) (*Pod, error) {
 func (n *Agent) CheckPodHealth(pod *Pod) (Status, error) {
 	//PATCH contra pod para ver current STATUS
 	return "", nil
+}
+
+func (p *Pod) ShutdownPod(ctx context.Context) error {
+	//Signal sigterm
+	err := p.Process.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	//10 sec grace time
+	waitCtx, cancel := context.WithTimeout(ctx, PodGraceTime)
+	defer cancel()
+	for {
+		select {
+		case <-waitCtx.Done():
+			err = p.Process.Process.Signal(syscall.SIGKILL)
+			if err != nil {
+				fmt.Println(err)
+				return err
+			}
+			break
+		}
+	}
+	return nil
 }

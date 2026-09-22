@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"syscall"
 	"time"
@@ -62,7 +63,12 @@ func main() {
 
 	<-ctx.Done()
 
-	shutdownctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	shutdownErr := node.ShutdownNode(shutdownctx)
+	if shutdownErr != nil {
+		fmt.Println(shutdownErr)
+	}
 
 }

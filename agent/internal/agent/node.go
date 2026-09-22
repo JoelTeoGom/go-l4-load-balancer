@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -174,5 +175,12 @@ func (a *Agent) ReleaseIP(releasedIP string) error {
 		return fmt.Errorf("Ip already released!")
 	}
 	a.allocated[releasedIP] = false
+	return nil
+}
+func (a *Agent) ShutdownNode(ctx context.Context) error {
+	//TODO get error
+	for _, service := range a.Services {
+		go service.ShutdownPods(ctx)
+	}
 	return nil
 }

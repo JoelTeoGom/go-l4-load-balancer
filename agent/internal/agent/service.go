@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 )
@@ -162,4 +163,11 @@ func (s *Service) Backends() []Backend {
 		backends = append(backends, externalBackend)
 	}
 	return backends
+}
+
+func (s *Service) ShutdownPods(ctx context.Context) error {
+	for _, pod := range s.LocalPods {
+		go pod.ShutdownPod(ctx)
+	}
+	return nil
 }
