@@ -6,6 +6,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/consensys/gnark-crypto/field/goff/cmd"
 )
 
 const (
@@ -23,7 +25,13 @@ type Pod struct {
 	VethHost    string // veth host peer
 	Status      Status // pending | running | failed
 	CreatedAt   time.Time
+	Process     Process
 }
+
+type Process struct {
+	PID string
+}
+
 type Status string
 
 const (
@@ -82,16 +90,29 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 
 	pod = NewPod(podID, serviceName, podIP)
 
+	//1.setting up netns
 	if err = a.SetupPodNetwork(pod); err != nil {
 		return nil, err
 	}
 
+	//2.setting up ip table
 	if err = service.SetupPodIptables(kubeService, pod); err != nil {
 		return nil, err
 	}
+
+	//3.Starting the process
+	if err = a.SetupProcess(pod); err != nil {
+
+	}
+
 	service.LocalPods = append(service.LocalPods, pod)
 
 	return pod, nil
+}
+
+func (a *Agent) SetupProcess(pod *Pod) error {
+	cmd.Execute()
+	return nil
 }
 
 // SetupPodIptables creates the new pod endpoint chain and rewrites the service chain with a jump to every backend

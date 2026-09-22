@@ -30,7 +30,6 @@ func (cp *APIServer) StartAPIServer(ctx context.Context, address string) error {
 	http.HandleFunc("/create-pod", cp.CreatePodHandler)
 	http.HandleFunc("/watch-node", cp.WatchNodeHandler)
 
-	address = fmt.Sprintf("%s:9000", address)
 	fmt.Println("Listening Control Plane: ", address)
 	err := http.ListenAndServe(address, nil)
 	if err != nil {

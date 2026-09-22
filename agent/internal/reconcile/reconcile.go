@@ -46,7 +46,7 @@ func processJob(node *agent.Agent, job event.Event) error {
 		servicename := payloadSlice[0]
 		ip := payloadSlice[1]
 		port := payloadSlice[2]
-		service, err := node.CreateService(servicename, ip, port)
+		service, err := node.CreateService(servicename, ip, port, "", "")
 		if err != nil {
 			return err
 		}

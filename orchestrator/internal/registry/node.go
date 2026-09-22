@@ -5,6 +5,7 @@ type Node struct {
 	address    string
 	status     Status
 	cpuPercent int
+	events     chan Event
 }
 
 func NewNode(id string, address string, status Status, cpuPercent int) *Node {

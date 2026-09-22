@@ -9,18 +9,13 @@ import (
 type Registry struct {
 	mu     sync.Mutex
 	nodes  []*Node
-	events chan NodeEvent
-}
-
-type NodeEvent struct {
-	Node  *Node
-	Event string
+	events chan Event
 }
 
 func NewRegistry() *Registry {
 	return &Registry{
 		nodes:  []*Node{},
-		events: make(chan NodeEvent, 10),
+		events: make(chan Event, 10),
 	}
 }
 

@@ -19,7 +19,6 @@ func NewLoadBalancer(registry *registry.Registry) *LoadBalancer {
 }
 
 func (dp *LoadBalancer) StartLoadBalancer(ctx context.Context, address string) error {
-	address = fmt.Sprintf("%s:8080", address)
 	fmt.Println("Listening Data plane: ", address)
 	ln, err := net.Listen("tcp", address)
 	if err != nil {

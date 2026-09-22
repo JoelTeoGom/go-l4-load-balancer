@@ -12,6 +12,7 @@
   - [ ] Decidir cómo el agent reporta el éxito/fallo al control plane
 - [ ] Si se creó bien → broadcast de `ActionAddRemoteEndpoint` (nodo + IP + NodePort + servicio) a los demás nodos
   - [ ] Excluir al nodo que ha creado el pod (ya tiene su regla de local pod)
+  - [ ] Crear algun tipo de persistencia de OBJETOS -> SERVICE + PODS
 
 ### Agent — nodo seleccionado (`ActionCreatePod`)
 - [x] Crear el pod (ns + reglas iptables)
