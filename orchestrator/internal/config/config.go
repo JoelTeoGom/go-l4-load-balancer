@@ -38,7 +38,6 @@ func (c *Config) CtrlPlanePort() string {
 }
 
 // CtrlPlaneAddress returns the "ip:port" the control plane listens on.
-// An empty IP means listening on all interfaces.
 func (c *Config) CtrlPlaneAddress() string {
 	return net.JoinHostPort(c.ctrlPlaneIP, c.ctrlPlanePort)
 }
@@ -52,7 +51,6 @@ func (c *Config) DataPlanePort() string {
 }
 
 // DataPlaneAddress returns the "ip:port" the data plane listens on.
-// An empty IP means listening on all interfaces.
 func (c *Config) DataPlaneAddress() string {
 	return net.JoinHostPort(c.dataPlaneIP, c.dataPlanePort)
 }

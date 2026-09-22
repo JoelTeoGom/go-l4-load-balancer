@@ -3,19 +3,20 @@ package config
 import "os"
 
 type Config struct {
-	lbAddr    string
-	agentPort string
+	controlPlaneURL string
+	agentPort       string
 }
 
 func NewConfig() *Config {
 	return &Config{
-		lbAddr:    os.Getenv("LB_ADDRESS"),
-		agentPort: os.Getenv("AGENT_PORT"),
+		controlPlaneURL: os.Getenv("LB_ADDRESS"),
+		agentPort:       os.Getenv("AGENT_PORT"),
 	}
 }
 
-func (c *Config) LbAddress() string {
-	return c.lbAddr
+// ControlPlaneURL returns the orchestrator control plane base URL (ex: http://192.168.1.50:9000).
+func (c *Config) ControlPlaneURL() string {
+	return c.controlPlaneURL
 }
 
 func (c *Config) AgentPort() string {

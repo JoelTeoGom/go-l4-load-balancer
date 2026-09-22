@@ -111,6 +111,10 @@ func (a *Agent) CreatePod(serviceName string) (pod *Pod, err error) {
 }
 
 func (a *Agent) SetupProcess(pod *Pod) error {
+	//1. Check or create Pod directory
+	//2. Move binary + env file to directory
+	//3. Execute binary +
+
 	cmd.Execute()
 	return nil
 }

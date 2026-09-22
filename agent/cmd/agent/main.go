@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/agent"
 	"github.com/JoelTeoGom/kubernetes-from-scratch/agent/internal/apiclient"
@@ -12,16 +15,24 @@ import (
 )
 
 func main() {
-	//TODO CREATE GRATEFUL SHUTDOWN
 	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	//configs
 	cfg := config.NewConfig()
 
 	//obtain Network variables
-	var err error
 	localIP, err := network.ObtainOutboundIP()
+	if err != nil {
+		panic(err)
+	}
 	hostname, err := network.ResolveHostname()
+	if err != nil {
+		panic(err)
+	}
+	//PodCIDR, gateway and bridge are derived from the node number at the end of the hostname (node-1)
+	nodeNetwork, err := network.NodeNetworkFromHostname(hostname)
 	if err != nil {
 		panic(err)
 	}
@@ -30,7 +41,7 @@ func main() {
 	defer close(eventJobs)
 
 	//Create Node and settup ip table rules
-	node, err := agent.NewAgent(hostname, localIP, "10.244.1.0/24", "br0", "10.244.1.1/24", cfg.LbAddress())
+	node, err := agent.NewAgent(hostname, localIP, nodeNetwork.PodCIDR, nodeNetwork.BridgeName, nodeNetwork.GatewayIP, cfg.ControlPlaneURL())
 	if err != nil {
 		panic(err)
 	}
@@ -48,5 +59,10 @@ func main() {
 	//Create Agent Reconciler to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
 	go reconcile.StartReconciler(ctx, node, eventJobs)
 	cp.Watch(ctx)
+
+	<-ctx.Done()
+
+	shutdownctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 }

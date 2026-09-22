@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os/exec"
+	"os"
 )
 
 func ObtainOutboundIP() (string, error) {
@@ -31,9 +31,5 @@ func ObtainLoadbalancerIP(target string) (string, error) {
 }
 
 func ResolveHostname() (string, error) {
-	hostName, err := exec.Command("hostname").Output()
-	if err != nil {
-		return "", err
-	}
-	return string(hostName), err
+	return os.Hostname()
 }
