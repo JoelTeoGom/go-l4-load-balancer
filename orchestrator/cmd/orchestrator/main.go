@@ -18,6 +18,8 @@ func main() {
 	etcd := etcd.NewEtcd()
 	registry := registry.NewRegistry()
 	metrics := metrics.NewMetrics(registry)
+
+	//ApiServer
 	controlPlane := apiserver.NewAPIServer(registry)
 	dataPlane := loadbalancer.NewLoadBalancer(registry)
 

@@ -34,7 +34,7 @@ func (r *Registry) EmitEvent(ctx context.Context, node *Node, event string) {
 	select {
 	case <-ctx.Done():
 		return
-	case r.events <- NodeEvent{
+	case r.events <- Event{
 		Node:  node,
 		Event: event,
 	}:

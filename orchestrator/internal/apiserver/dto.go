@@ -25,3 +25,8 @@ func parseHealthResponse(body io.Reader) (registry.Status, error) {
 		return "", fmt.Errorf("unknown health status %q", healthResponse.Status)
 	}
 }
+
+type RegisterNodeRequest struct {
+	NodeID string
+	NodeIP string
+}

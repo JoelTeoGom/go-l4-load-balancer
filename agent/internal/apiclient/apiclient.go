@@ -64,6 +64,30 @@ func (cp *APIClient) RegisterNode(ctx context.Context) error {
 	return cp.post(ctx, "/register-node", cp.Node.NodeID)
 }
 
+func (cp *APIClient) List(ctx context.Context) error {
+	endpoint := cp.Node.ControlPlaneURL + "/list/" + cp.Node.NodeID
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	response, err := cp.Client.Do(request)
+	if err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+	defer func() {
+		io.Copy(io.Discard, response.Body) // drain so the conn can be reused
+		response.Body.Close()
+	}()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		errorBody, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+		return fmt.Errorf("unexpected status %d: %s", response.StatusCode, errorBody)
+	}
+	return nil
+}
+
 func (cp *APIClient) UnregisterNode(ctx context.Context) error {
 	return cp.post(ctx, "/unregister-node", cp.Node.NodeID)
 }

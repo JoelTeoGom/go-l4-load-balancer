@@ -234,9 +234,35 @@ func vethNames(podID string) (string, string) {
 // leak exactly like a failed create would: ReleaseIP for the pod IP, ReleaseID on the
 // service for the pod ID, delete the netns and the veth, drop its KUBE-SEP chain and
 // rewrite the service chain so the probabilities match the remaining backends
-func (n *Agent) RemovePod(pod *Pod) (*Pod, error) {
-	//ENVIAR UN SIGTERM I LUEGO SIGKILL I MATAMOS EL PROCESO
-	return nil, nil
+func (a *Agent) RemovePod(pod *Pod) (*Pod, error) {
+	err := pod.Process.Process.Signal(syscall.SIGTERM)
+	if err != nil {
+		fmt.Println(err)
+		return pod, err
+	}
+	//10 sec grace time
+	waitCtx, cancel := context.WithTimeout(context.Background(), PodGraceTime)
+	defer cancel()
+loop:
+	for {
+		select {
+		case <-waitCtx.Done():
+			err = a.ReleaseIP(pod.IP)
+			if err != nil {
+				fmt.Println(err)
+			}
+			err = pod.Process.Process.Signal(syscall.SIGKILL)
+			if err != nil {
+				fmt.Println(err)
+				return pod, err
+			}
+			break loop
+		}
+	}
+
+	//TODO REMOVE FROM SERVICE LOCAL POD LIST
+
+	return pod, nil
 }
 
 func (n *Agent) CheckPodHealth(pod *Pod) (Status, error) {
@@ -244,9 +270,9 @@ func (n *Agent) CheckPodHealth(pod *Pod) (Status, error) {
 	return "", nil
 }
 
-func (p *Pod) ShutdownPod(ctx context.Context) error {
+func (a *Agent) ShutdownPod(ctx context.Context, pod *Pod) error {
 	//Signal sigterm
-	err := p.Process.Process.Signal(syscall.SIGTERM)
+	err := pod.Process.Process.Signal(syscall.SIGTERM)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -255,16 +281,22 @@ func (p *Pod) ShutdownPod(ctx context.Context) error {
 	//10 sec grace time
 	waitCtx, cancel := context.WithTimeout(ctx, PodGraceTime)
 	defer cancel()
+loop:
 	for {
 		select {
 		case <-waitCtx.Done():
-			err = p.Process.Process.Signal(syscall.SIGKILL)
+			err = a.ReleaseIP(pod.IP)
+			if err != nil {
+				fmt.Println(err)
+			}
+			err = pod.Process.Process.Signal(syscall.SIGKILL)
 			if err != nil {
 				fmt.Println(err)
 				return err
 			}
-			break
+			break loop
 		}
 	}
 	return nil
 }
+func (p *Pod) CreatePodContainer()

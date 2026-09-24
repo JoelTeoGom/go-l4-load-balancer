@@ -165,9 +165,11 @@ func (s *Service) Backends() []Backend {
 	return backends
 }
 
-func (s *Service) ShutdownPods(ctx context.Context) error {
+func (a *Agent) ShutdownPods(ctx context.Context, s *Service) error {
+	//TODO no err handling
 	for _, pod := range s.LocalPods {
-		go pod.ShutdownPod(ctx)
+		go a.ShutdownPod(ctx, pod)
 	}
+	//Pods will be erased from local pod slice anyways
 	return nil
 }

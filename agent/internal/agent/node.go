@@ -180,7 +180,7 @@ func (a *Agent) ReleaseIP(releasedIP string) error {
 func (a *Agent) ShutdownNode(ctx context.Context) error {
 	//TODO get error
 	for _, service := range a.Services {
-		go service.ShutdownPods(ctx)
+		go a.ShutdownPods(ctx, service)
 	}
 	return nil
 }

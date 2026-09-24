@@ -8,12 +8,13 @@ type Node struct {
 	events     chan Event
 }
 
-func NewNode(id string, address string, status Status, cpuPercent int) *Node {
+func NewNode(id string, address string, status Status, cpuPercent int, event chan Event) *Node {
 	return &Node{
 		id:         id,
 		address:    address,
 		status:     status,
 		cpuPercent: cpuPercent,
+		events:     make(chan Event, 50),
 	}
 }
 

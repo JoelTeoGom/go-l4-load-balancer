@@ -2,6 +2,7 @@ package apiserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -19,13 +20,16 @@ func (cp *APIServer) registerNodeHandler(w http.ResponseWriter, r *http.Request)
 
 	defer r.Body.Close() // Close the request body to avoid resource leaks
 
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		http.Error(w, "Invalid remote address", http.StatusBadRequest)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	var req RegisterNodeRequest
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusInternalServerError)
 		return
 	}
-	nodeID := fmt.Sprintf("Node-A")
-	node := registry.NewNode(nodeID, host, registry.StatusActive, 0)
+
+	node := registry.NewNode(req.NodeID, req.NodeIP, registry.StatusActive, 0)
 	if cp.Registry.AddNode(node) == nil {
 		http.Error(w, "Failed to register node", http.StatusInternalServerError)
 		return
