@@ -196,3 +196,7 @@ func (cp *APIServer) WatchNodeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func (cp *APIServer) ListNodeDataHandler(w http.ResponseWriter, r *http.Request) {
+
+}

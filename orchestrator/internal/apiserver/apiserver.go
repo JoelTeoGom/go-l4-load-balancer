@@ -26,6 +26,7 @@ func (cp *APIServer) StartAPIServer(ctx context.Context, address string) error {
 	http.HandleFunc("/list-nodes", cp.listNodesHandler)
 	http.HandleFunc("/health", cp.healthHandler)
 
+	http.HandleFunc("GET /list/{id}", cp.ListNodeDataHandler)
 	http.HandleFunc("/create-service", cp.CreateServiceHandler)
 	http.HandleFunc("/create-pod", cp.CreatePodHandler)
 	http.HandleFunc("/watch-node", cp.WatchNodeHandler)

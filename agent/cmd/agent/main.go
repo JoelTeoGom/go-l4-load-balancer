@@ -41,7 +41,7 @@ func main() {
 	eventJobs := make(chan event.Event)
 	defer close(eventJobs)
 
-	//Create Node and settup ip table rules
+	//Create Node and setup ip table rules
 	node, err := agent.NewAgent(hostname, localIP, nodeNetwork.PodCIDR, nodeNetwork.BridgeName, nodeNetwork.GatewayIP, cfg.ControlPlaneURL())
 	if err != nil {
 		panic(err)
@@ -50,24 +50,27 @@ func main() {
 		panic(err)
 	}
 
-	//Register to ControlPlane
 	cp := apiclient.NewAPIClient(node, eventJobs)
 
-	//TODO
-	// 0. Register
-	// 1. List (services and pods)
-	// 2. Recreate the state
-	// 3. Then and finally we conect the watch and start to get events from the state we reconciled
+	//0. Register CP
 	err = cp.RegisterNode(ctx)
 	if err != nil {
 		panic(err)
 	}
+	// 1. List (services and pods)
+	err = cp.List(ctx)
+	if err != nil {
+		fmt.Println(err)
+	}
 
-	err = cp.List()
-
-	//Create Agent Reconciler to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
+	// 3. Create Agent Reconciler to Listen ControlPlane Events and Process (ex: Create pod, service, health...)
 	go reconcile.StartReconciler(ctx, node, eventJobs)
-	cp.Watch(ctx)
+
+	// 4. watch future events
+	err = cp.Watch(ctx)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	<-ctx.Done()
 
