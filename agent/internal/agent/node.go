@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -21,6 +22,9 @@ type Agent struct {
 	//len(AllocatedIPs) is used as pointer to the next free IP
 	//(valid pod IPs for /24: .2 - .254 -> 253 IPs; .0 network, .1 gateway, .255 broadcast are reserved)
 	allocated map[string]bool
+
+	RegistryPath      string
+	SecretManagerPath string
 }
 
 type Bridge struct {
@@ -44,6 +48,18 @@ func NewAgent(nodeID, nodeIP, podCIDR, bridgeName, gatewayIP, controlPlaneURL st
 }
 
 func (a *Agent) InitNodeSetup() error {
+	//0. Create Container registry + secret
+	err := os.MkdirAll("Registry", 0777)
+	if err != nil {
+		fmt.Printf("Error")
+		return err
+	}
+	err = os.MkdirAll("Secrets", 0777)
+	if err != nil {
+		fmt.Printf("Error")
+		return err
+	}
+
 	//1. Loading br_netfilter so bridged traffic goes through iptables
 	if err := run("modprobe", "br_netfilter"); err != nil {
 		return err

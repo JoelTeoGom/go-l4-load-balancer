@@ -34,10 +34,7 @@ func (r *Registry) EmitEvent(ctx context.Context, node *Node, event string) {
 	select {
 	case <-ctx.Done():
 		return
-	case r.events <- Event{
-		Node:  node,
-		Event: event,
-	}:
+	case r.events <- Event{}:
 	default:
 		// to avoid blocking if the channel is full, we will get another one after a while
 	}

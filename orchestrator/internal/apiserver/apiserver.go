@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/etcd"
 	"github.com/JoelTeoGom/kubernetes-from-scratch/orchestrator/internal/registry"
 )
 
 type APIServer struct {
 	Registry   *registry.Registry
 	EventQueue chan Event
+	Db         etcd.Etcd
 }
 
-func NewAPIServer(registry *registry.Registry) *APIServer {
+func NewAPIServer(registry *registry.Registry, storage etcd.Etcd) *APIServer {
 	return &APIServer{
+		Db:         storage,
 		Registry:   registry,
 		EventQueue: make(chan Event, 100),
 	}

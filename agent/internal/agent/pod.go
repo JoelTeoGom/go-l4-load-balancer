@@ -1,16 +1,17 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/consensys/gnark-crypto/field/goff/cmd"
 )
 
 const (
@@ -30,6 +31,7 @@ type Pod struct {
 	Status      Status // pending | running | failed
 	CreatedAt   time.Time
 	Process     Process
+	DirPath     string
 }
 
 type Process struct {
@@ -120,7 +122,26 @@ func (a *Agent) SetupProcess(pod *Pod) error {
 	//2. Move binary + env file to directory
 	//3. Execute binary +
 
-	cmd.Execute()
+	dir := fmt.Sprintf("/Pods/%s", pod.ID)
+	err := os.MkdirAll(dir, 0777)
+	if err != nil {
+		panic(err)
+	}
+	pod.DirPath = dir
+
+	cmd := exec.Command("cp", "Registry/main.sh", dir)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("cp falló: %v — %s", err, stderr.String())
+	}
+
+	cmd = exec.Command("cp", "Secrets/env.local", dir)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("cp falló: %v — %s", err, stderr.String())
+	}
 	return nil
 }
 

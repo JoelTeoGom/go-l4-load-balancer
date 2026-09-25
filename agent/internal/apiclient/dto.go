@@ -5,3 +5,5 @@ type RegisterPodRequest struct {
 	NodeIP      string `json:"nodeIp"`
 	ServiceName string `json:"serviceName"`
 }
+type ServiceResponse struct {
+}

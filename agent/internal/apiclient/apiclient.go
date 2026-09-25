@@ -85,7 +85,12 @@ func (cp *APIClient) List(ctx context.Context) error {
 		errorBody, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
 		return fmt.Errorf("unexpected status %d: %s", response.StatusCode, errorBody)
 	}
-	return nil
+
+	var serviceResponse ServiceResponse
+	if err := json.NewDecoder(response.Body).Decode(&serviceResponse); err != nil {
+		return nil, fmt.Errorf("Error decoding serviceResponse %w", err)
+	}
+	return &serviceResponse, nil
 }
 
 func (cp *APIClient) UnregisterNode(ctx context.Context) error {

@@ -20,7 +20,7 @@ func main() {
 	metrics := metrics.NewMetrics(registry)
 
 	//ApiServer
-	controlPlane := apiserver.NewAPIServer(registry)
+	controlPlane := apiserver.NewAPIServer(registry, etcd)
 	dataPlane := loadbalancer.NewLoadBalancer(registry)
 
 	go func() {

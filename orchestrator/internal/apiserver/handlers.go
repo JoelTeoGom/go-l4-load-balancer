@@ -29,7 +29,7 @@ func (cp *APIServer) registerNodeHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	node := registry.NewNode(req.NodeID, req.NodeIP, registry.StatusActive, 0)
+	node := registry.NewNode(req.NodeID, req.NodeIP, registry.StatusActive, 0, nil)
 	if cp.Registry.AddNode(node) == nil {
 		http.Error(w, "Failed to register node", http.StatusInternalServerError)
 		return
